@@ -1,8 +1,9 @@
 #lang racket
 ; start feeds the interpreters output to Mst
-(define start
-  (lambda (exp state)))
-
+(define interpret
+  (lambda (name)
+    (load "simpleParser.scm")
+    (Mst (cdr (parser name)) (Mst (car (parser name)) '(()()) ))))
 
 
 ; M_value takes an expression, a state and returns its evaluation
@@ -68,6 +69,7 @@
 (define Mst
   (lambda (exp st)
     (cond
+      ((null? exp)   (valueof 'return st))
       ((eq? 'var     (operator exp)) (Mst_declare  exp st))
       ((eq? '=       (operator exp)) (Mst_assign   exp st))
       ((eq? 'return  (operator exp)) (Mst_return   exp st))
