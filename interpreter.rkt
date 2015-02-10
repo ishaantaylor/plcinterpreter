@@ -1,14 +1,20 @@
 #lang racket
+; start feeds the interpreters output to Mst
+(define start
+  (lambda (exp state)))
+
+
+
 ; M_value takes an expression, a state and returns its evaluation
 ; (Mval '(+ 1 (* 5 x)) '((x) (10)))
-; doesn't yet support undefined vairables
 (define Mval
   (lambda (exp state)
     (cond
       ((number? exp) exp)                     ; expression is number
+      
       ((and                                   
-        (in? exp state)                       ; in state
-        (eq? (valueof exp state) 'undefined))   ; undefined
+        (in? exp state)                          ; in state
+        (eq? (valueof exp state) 'undefined))    ; undefined
        (error 'make-sure-your-variables-are-defined))
         
       ((in? exp state) (valueof exp state))   ; expression is variable in state and defined
@@ -18,15 +24,13 @@
         (atom? exp))              ; is an atom
        (error 'make-sure-your-variables-are-declared))
        
-      
       ((eq? '+ (operator exp)) (+ (Mval (leftoperand exp) state) (Mval (rightoperand exp) state)))
       ((eq? '/ (operator exp)) (quotient (Mval (leftoperand exp) state) (Mval (rightoperand exp) state)))
       ((eq? '% (operator exp)) (remainder (Mval (leftoperand exp) state) (Mval (rightoperand exp) state)))
       ((eq? '- (operator exp)) (Mval_unary_neg exp state))
       ((eq? '* (operator exp)) (* (Mval (leftoperand exp) state) (Mval (rightoperand exp) state)))
-           
-      (else (error 'bad-operator)))))
-
+      
+      (else (Mbool exp state)))))
 
 ; supports the unary negation operator
 (define Mval_unary_neg
@@ -35,22 +39,30 @@
       ((null? (rightoperand exp)) (- 0 (Mval (leftoperand exp) state)))       ; 7 - 7 = 0 -> - 7  = -7
       (else (- (Mval (leftoperand exp) state) (Mval (rightoperand exp) state))))))
 
-; doesn't yet understand the difference between numbers and booleans for == !=, and doesn't know how to check for either
+
+; (Mbool '(< (+ 1 2) (* 10 x)) '((x)(10)))
+; (Mbool '(&& (< 1 2) (< 2 1)) '((x)(10)))
+; (Mbool '(!= (+ 1 2) (+ 2 1)) '((x)(10)))
 (define Mbool
   (lambda (exp st)
     (cond
-      ((number? (Mval exp st)) (Mval exp st))
       ((eq? exp 'true) #t)
       ((eq? exp 'false) #f)
-      ((eq? '&& (operator exp)) )
-      ((eq? '|| (operator exp)) )
-      ((eq? '< (operator exp)) (< (Mbool (leftoperand exp) st) (Mbool (rightoperand exp) st)))
-      ((eq? '> (operator exp)) (> (Mbool (leftoperand exp) st) (Mbool (rightoperand exp) st)))
-      ((eq? '>= (operator exp)) (>= (Mbool (leftoperand exp) st) (Mbool (rightoperand exp) st)))
-      ((eq? '<= (operator exp)) (<= (Mbool (leftoperand exp) st) (Mbool (rightoperand exp) st)))
-      ((eq? '== (operator exp)) (= (Mbool (leftoperand exp) st) (Mbool (rightoperand exp) st)))
-      ((eq? '!= (operator exp)) (not (= (Mbool (leftoperand exp) st) (Mbool (rightoperand exp) st))))
-      )))
+      ((number? exp) (Mval exp st))
+
+      ((eq? '&& (operator exp)) (and (Mbool (leftoperand exp) st) (Mbool (rightoperand exp) st)))
+      ((eq? '|| (operator exp)) (or (Mbool (leftoperand exp) st) (Mbool (rightoperand exp) st)))
+      
+      ((eq? '== (operator exp)) (eq? (Mval (leftoperand exp) st) (Mval (rightoperand exp) st)))
+      ((eq? '!= (operator exp)) (not (eq? (Mval (leftoperand exp) st) (Mval (rightoperand exp) st))))
+      
+      ((eq? '< (operator exp)) (< (Mval (leftoperand exp) st) (Mval (rightoperand exp) st)))
+      ((eq? '> (operator exp)) (> (Mval (leftoperand exp) st) (Mval (rightoperand exp) st)))
+      ((eq? '>= (operator exp)) (>= (Mval (leftoperand exp) st) (Mval (rightoperand exp) st)))
+      ((eq? '<= (operator exp)) (<= (Mval (leftoperand exp) st) (Mval (rightoperand exp) st)))
+      
+      (else (error 'bad-operator)))))
+
             
 ; main Mstate function that directs the rest of the Mstates, called by interpret
 (define Mst
