@@ -1,75 +1,23 @@
-#lang racket
+(load "simpleParser.scm")
+
 ; start feeds the interpreters output to Mst
 (define interpret
   (lambda (name)
-    (load "simpleParser.scm")
-    (Mst (cdr (parser name)) (Mst (car (parser name)) '(()()) ))))
+    (valueofwrap 'return (Mstatelist (parser name) '(()())))))
+    ;(valueof 'return (Mstate name '(()())))))
 
-
-; M_value takes an expression, a state and returns its evaluation
-; (Mval '(+ 1 (* 5 x)) '((x) (10)))
-(define Mval
-  (lambda (exp state)
-    (cond
-      ((number? exp) exp)                     ; expression is number
-      
-      ((and                                   
-        (in? exp state)                          ; in state
-        (eq? (valueof exp state) 'undefined))    ; undefined
-       (error 'make-sure-your-variables-are-defined))
-        
-      ((in? exp state) (valueof exp state))   ; expression is variable in state and defined
-      
-      ((and                       ; expression is not in state ^
-        (not (number? exp))       ; not a number
-        (atom? exp))              ; is an atom
-       (error 'make-sure-your-variables-are-declared))
-       
-      ((eq? '+ (operator exp)) (+ (Mval (leftoperand exp) state) (Mval (rightoperand exp) state)))
-      ((eq? '/ (operator exp)) (quotient (Mval (leftoperand exp) state) (Mval (rightoperand exp) state)))
-      ((eq? '% (operator exp)) (remainder (Mval (leftoperand exp) state) (Mval (rightoperand exp) state)))
-      ((eq? '- (operator exp)) (Mval_unary_neg exp state))
-      ((eq? '* (operator exp)) (* (Mval (leftoperand exp) state) (Mval (rightoperand exp) state)))
-      
-      (else (Mbool exp state)))))
-
-; supports the unary negation operator
-(define Mval_unary_neg
-  (lambda (exp state)
-    (cond
-      ((null? (rightoperand exp)) (- 0 (Mval (leftoperand exp) state)))       ; 7 - 7 = 0 -> - 7  = -7
-      (else (- (Mval (leftoperand exp) state) (Mval (rightoperand exp) state))))))
-
-
-; (Mbool '(< (+ 1 2) (* 10 x)) '((x)(10)))
-; (Mbool '(&& (< 1 2) (< 2 1)) '((x)(10)))
-; (Mbool '(!= (+ 1 2) (+ 2 1)) '((x)(10)))
-(define Mbool
+; main Mstate wrapper
+(define Mstatelist 
   (lambda (exp st)
     (cond
-      ((eq? exp 'true) #t)
-      ((eq? exp 'false) #f)
-      ((number? exp) (Mval exp st))
+      ((null? exp) st); (valueof 'return st))
+      (else (Mstatelist (cdr exp) (Mst (car exp) st))))))
 
-      ((eq? '&& (operator exp)) (and (Mbool (leftoperand exp) st) (Mbool (rightoperand exp) st)))
-      ((eq? '|| (operator exp)) (or (Mbool (leftoperand exp) st) (Mbool (rightoperand exp) st)))
-      
-      ((eq? '== (operator exp)) (eq? (Mval (leftoperand exp) st) (Mval (rightoperand exp) st)))
-      ((eq? '!= (operator exp)) (not (eq? (Mval (leftoperand exp) st) (Mval (rightoperand exp) st))))
-      
-      ((eq? '< (operator exp)) (< (Mval (leftoperand exp) st) (Mval (rightoperand exp) st)))
-      ((eq? '> (operator exp)) (> (Mval (leftoperand exp) st) (Mval (rightoperand exp) st)))
-      ((eq? '>= (operator exp)) (>= (Mval (leftoperand exp) st) (Mval (rightoperand exp) st)))
-      ((eq? '<= (operator exp)) (<= (Mval (leftoperand exp) st) (Mval (rightoperand exp) st)))
-      
-      (else (error 'bad-operator)))))
-
-            
 ; main Mstate function that directs the rest of the Mstates, called by interpret
 (define Mst
   (lambda (exp st)
     (cond
-      ((null? exp)   (valueof 'return st))
+      ((null? exp)   st)
       ((eq? 'var     (operator exp)) (Mst_declare  exp st))
       ((eq? '=       (operator exp)) (Mst_assign   exp st))
       ((eq? 'return  (operator exp)) (Mst_return   exp st))
@@ -77,15 +25,40 @@
 
 ; '(var x expression) and '(var x)
 ; Declare variable (place in state with corresponding value), if doesn't have value then 'undefined
+; (Mst_declare '(var x) '((x) (10)))
 ; (Mst_declare '(var x) '(()()))
 ; (Mst_declare '(var x 10) '(()()))
 ; (Mst_declare '(var x (* 2 10)) '(()()))
-; (Mst_declare '(var x (* x 10)) '((x)(10)))
+; (Mst_declare '(var x (* x 20)) '((x)(10)))
 (define Mst_declare
   (lambda (exp st)
     (cond
+      ; and (right operand null, left operand in state, remove left operand from state then add new variable to state with undefined
+      ((and
+       (null? (rightoperand exp))
+       (in? (leftoperand exp) st))
+       (addst (leftoperand exp) 'undefined (removest (leftoperand exp) st)))
+      
+      ; if right operand is null and left operand is not in state, add left operand to state with undefined
       ((null? (rightoperand exp)) (addst (leftoperand exp) 'undefined st))
+      
+      ; if left operand is not in state, right operand is not null, add left value to state with (Mvalwrap (rightoperand exp) ... (must be Mvalwrap because dont want to save state as true or false, but #t and #f
+      ((not (in? (leftoperand exp) st)) (addst 
+                                   (leftoperand exp)
+                                   (Mvalwrap (rightoperand exp) st)
+                                   st))
+      
+      ; otherwise (Mst_assign exp st)
       (else (Mst_assign exp st)))))
+
+; (Mst_assign '(= x 10) '(() ()))
+; (Mst_assign '(= x 10) '((x) (4)))
+(define Mst_assign
+  (lambda (exp st)
+    (cond
+      ((in? (leftoperand exp) st) (addst (leftoperand exp) (Mvalwrap (rightoperand exp) st) (removest (leftoperand exp) st)))
+      ((eq? (operator exp) 'var) (addst (leftoperand exp) (Mvalwrap (rightoperand exp) st) st))    ; dont think i need this
+      (else (error 'declare-your-variables-before-assigning-it-a-value)))))
 
 ; '(return expression)
 ; create new return variable and put it in state)
@@ -93,53 +66,61 @@
 ; (Mst_return '(return (* 10 x)) '((x) (9)))
 (define Mst_return
   (lambda (exp st)
-    (addst (operator exp) (Mval (leftoperand exp) st) st)))
-
-; (Mst_assign '(= x 10) '(() ()))
-; (Mst_assign '(= x 10) '((x) (4)))
-(define Mst_assign
-  (lambda (exp st)
-    (cond
-      ((in? (leftoperand exp) st) (addst (leftoperand exp) (Mval (rightoperand exp) st) (removest (leftoperand exp) st)))
-      (else (error 'declare-before-assigning-variable)))))
+    (addst (operator exp) (Mvalwrap (leftoperand exp) st) st)))
 
 ; (Mst_if '(if (>= x y) (= m x) (= m y)) '((x y m) (1 2 0)))
+; (Mst_if '(if (== x y) (= x 10)) '((x y) (5 6)))
+; (Mst_if '(if (|| (! z) false) (= z (! z)) (= z z)) '((x y z) (10 20 true))
 ; cadr = condition, caddr = statement1, cadddr = statement2
 (define Mst_if
   (lambda (exp st)
     (cond
-      ((Mbool (cadr exp) st) (Mst (caddr exp) st))
+      ((Mvalwrap (cadr exp) st) (Mst (caddr exp) st))                 ; if cond true
+      ((and (null? (cdddr exp)) (not (Mvalwrap (cadr exp) st))) st)   ; 
       (else (Mst (cadddr exp) st)))))
 
 
 ; adds variable to car st and value to (same position) of cadr :: ((variables) (values))
+; replaces variable if state already exists
 ; (addst 'x '(* 10 2) '(()()))
 (define addst
   (lambda (variable exp st)
     (cond
       ((in? variable st) (replacest variable exp st))
       (else (list 
-             (addtoend variable (first st))
-             (addtoend (Mval exp st) (second st)))))))
+             (addtoend variable (operator st))
+             (addtoend exp (leftoperand st)))))))
 
 ; removes variable and corresponding value from st
 ; (removest 'r '((y x f j r u i l) (2 5 9 1 2 3 5 21)))
 (define removest
   (lambda (variable st)
     (cond
-      ((null? (first st)) '(() ()))
-      ((eq? variable (car (first st))) (removest variable (cdrcdr st)))
+      ((null? (operator st)) '(() ()))
+      ((eq? variable (car (operator st))) (removest variable (cdrcdr st)))
       (else (list 
-             (cons (car (first st)) (car (removest variable (cdrcdr st))))
-             (cons (car (second st)) (cadr (removest variable (cdrcdr st)))))))))
+             (cons (car (operator st)) (car (removest variable (cdrcdr st))))
+             (cons (car (leftoperand st)) (cadr (removest variable (cdrcdr st)))))))))
 
+; valueof wrap returns not #t or #f but true or false when called
+(define valueofwrap
+  (lambda (variable env)
+    (cond
+      ; if (and (variable is return) (return value is boolean)) return Mval of the variable (Mval returns true or false, not #t or #f
+      ((and 
+       (eq? variable 'return)
+       (or 
+        (eq? (valueof 'return env) #t) 
+        (eq? (valueof 'return env) #f))) (Mval 'return env))
+      (else (valueof variable env)))))
+      
 ; returns the value of a variable thats in the state
 ; (valueof 'r '((y x f j r u i l) (2 5 9 1 2 3 5 21)))
 (define valueof
   (lambda (variable env)
     (cond
-      ((null? (first env)) #f)      ; hopefully will never be called
-      ((eq? variable (car (first env))) (car (second env)))
+      ((null? (operator env)) #f)      ; hopefully will never be called
+      ((eq? variable (car (operator env))) (car (leftoperand env)))
       (else (valueof variable (cdrcdr env))))))
       
 ; is the variable present in env? has it been declared? (use env when not modifying state) 
@@ -148,7 +129,7 @@
   (lambda (variable env)
     (cond
       ((null? (car env)) #f)    ; (*()* ())
-      ((eq? variable (car (first env))) #t)
+      ((eq? variable (car (operator env))) #t)
       (else (in? variable (cdrcdr env))))))  ; if first element of (car st) is not the variable, new state is just cons of (trim first element from car and cdr of env)
 
 ; replace variable's value with exp
@@ -156,18 +137,18 @@
 ; (replacest 'x '(* 4 10) '((y x z r) (2 5 10 20)))
 (define replacest
   (lambda (variable exp st)
-    (addst variable (Mval exp st) (removest variable st))))
+    (addst variable (Mvalwrap exp st) (removest variable st))))
 
 
-; trim the first element off (first st) and (second st)
+; trim the first element off (operator st) and (leftoperand st)
 ; (cdrcdr '((1 2 3) (4 5 6)))
 (define cdrcdr
   (lambda (env)
     (cond
-      ((null? (first env)) '(() ()))
+      ((null? (operator env)) '(() ()))
       (else (list 
-             (cdr (first env)) 
-             (cdr (second env)))))))
+             (cdr (operator env)) 
+             (cdr (leftoperand env)))))))
       
 ; add a to end of l
 ; (addtoend 'x '(1 2 3 a b c s))
@@ -182,9 +163,81 @@
   (lambda (x)
     (and (not (pair? x)) (not (null? x)))))
 
+
+; M_value takes an expression, a state and returns its evaluation (#t, #f)
+; (Mval '(+ 1 (* 5 x)) '((x) (10)))
+; 
+(define Mvalwrap
+  (lambda (exp state)
+    (cond
+      ((number? exp) exp)                     ; expression is number
+      
+      ((and                                   
+        (in? exp state)                          ; in state
+        (eq? (valueof exp state) 'undefined))    ; undefined
+       (error 'make-sure-your-variables-are-defined-with-a-value))
+        
+      ((in? exp state) (valueof exp state))   ; expression is variable in state and defined
+      
+      ((and                       ; expression is not in state ^
+        (not (number? exp))       ; not a number
+        (atom? exp))              ; is an atom
+       (error 'make-sure-your-variables-are-declared))
+       
+      ((eq? '+ (operator exp)) (+ (Mvalwrap (leftoperand exp) state) (Mvalwrap (rightoperand exp) state)))
+      ((eq? '/ (operator exp)) (quotient (Mvalwrap (leftoperand exp) state) (Mvalwrap (rightoperand exp) state)))
+      ((eq? '% (operator exp)) (remainder (Mvalwrap (leftoperand exp) state) (Mvalwrap (rightoperand exp) state)))
+      ((eq? '- (operator exp)) (Mval_unary_neg exp state))
+      ((eq? '* (operator exp)) (* (Mvalwrap (leftoperand exp) state) (Mvalwrap (rightoperand exp) state)))
+      
+      (else (Mbool1 exp state)))))
+
+; supports the unary negation operator
+(define Mval_unary_neg
+  (lambda (exp state)
+    (cond
+      ((null? (rightoperand exp)) (- 0 (Mval (leftoperand exp) state)))       ; 7 - 7 = 0 -> - 7  = -7
+      (else (- (Mval (leftoperand exp) state) (Mval (rightoperand exp) state))))))
+
+
+(define Mval
+  (lambda (exp st)
+    (cond
+      ((eq? (Mvalwrap exp st) #t) 'true)
+      ((eq? (Mvalwrap exp st) #f) 'false)
+      (else (Mvalwrap exp st)))))
+
+
+; (Mbool '(< (+ 1 2) (* 10 x)) '((x)(10)))
+; (Mbool '(&& (< 1 2) (< 2 1)) '((x)(10)))
+; (Mbool '(!= (+ 1 2) (+ 2 1)) '((x)(10)))
+(define Mbool1
+  (lambda (exp st)
+    (cond
+      ((eq? exp 'true) #t)
+      ((eq? exp 'false) #f)
+      ((number? exp) (Mvalwrap exp st))
+      ((in? exp st) (valueof exp st))
+
+      ((eq? '&& (operator exp)) (and (Mbool1 (leftoperand exp) st) (Mbool1 (rightoperand exp) st)))
+      ((eq? '|| (operator exp)) (or (Mbool1 (leftoperand exp) st) (Mbool1 (rightoperand exp) st)))
+      ((eq? '!  (operator exp)) (not (Mbool1 (leftoperand exp) st)))
+      
+      ((eq? '== (operator exp)) (eq? (Mvalwrap (leftoperand exp) st) (Mvalwrap (rightoperand exp) st)))
+      ((eq? '!= (operator exp)) (not (eq? (Mvalwrap (leftoperand exp) st) (Mvalwrap (rightoperand exp) st))))
+      
+      ((eq? '<  (operator exp)) (< (Mvalwrap (leftoperand exp) st) (Mvalwrap (rightoperand exp) st)))
+      ((eq? '>  (operator exp)) (> (Mvalwrap (leftoperand exp) st) (Mvalwrap (rightoperand exp) st)))
+      ((eq? '>= (operator exp)) (>= (Mvalwrap (leftoperand exp) st) (Mvalwrap (rightoperand exp) st)))
+      ((eq? '<= (operator exp)) (<= (Mvalwrap (leftoperand exp) st) (Mvalwrap (rightoperand exp) st)))
+      
+      (else (error 'bad-operator)))))
+
+
 ; helper functions to get the first list in st and second
-(define first car)
-(define second cadr)
+;  for some reason these didn't work in anything other than #lang racket, so changed all instances of first and second to operator and leftoperand respectively
+;(define first car)
+;(define second cadr)
 
 ; the helper functions to determine where the operator and operands are depending on the form
 (define operator car)
@@ -193,4 +246,4 @@
   (lambda (exp)
     (cond
       ((null? (cddr exp)) '())      ; unary
-      (else (car (cddr exp)))))) 
+      (else (car (cddr exp))))))
