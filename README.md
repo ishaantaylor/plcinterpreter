@@ -5,7 +5,7 @@ Interpreter for a Java/C like language written in a common Lisp dialect, Scheme.
 1. Clone repository and 'run' `interpreter.rkt`.
 
 2. Each branch has a different interpreter:
-  ####`dev` Branch
+  ####`dev`
     This interpreter works for a language that has variables, assignment statements, mathematical expressions, comparison operators, simple if statements, and return statements like the one below.
 
      	 var x;
@@ -20,7 +20,7 @@ Interpreter for a Java/C like language written in a common Lisp dialect, Scheme.
      	 else 
      	   return y - 1;
 
-  ####`loopscope` branch
+  ####`loopscope`
     This interpreter works for a language like the `dev` branch. In addition, it also handles while loops, break statements, continue statements, and scope (`{}`).
 
      	 var a = 14;
