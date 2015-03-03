@@ -11,7 +11,6 @@
 (define interpret
   (lambda (name)
     (valueofwrap 'return (Mstatelist (parser name) (newenv)))))
-    ;(valueof 'return (Mstate name '(()())))))
 
 ; main Mstate wrapper
 (define Mstatelist 
