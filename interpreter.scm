@@ -1,9 +1,16 @@
 (load "simpleParser.scm")
 
+; test
+(define testvalid
+  (lambda ()
+    (list 
+     (interpret "1.txt") (interpret "2.txt") (interpret "3.txt") (interpret "4.txt") (interpret "5.txt") (interpret "6.txt") (interpret "7.txt") (interpret "8.txt") (interpret "9.txt") (interpret "10.txt")
+     (interpret "15.txt") (interpret "16.txt") (interpret "17.txt") (interpret "18.txt"))))    
+
 ; start feeds the interpreters output to Mst
 (define interpret
   (lambda (name)
-    (valueofwrap 'return (Mstatelist (parser name) '(()())))))
+    (valueofwrap 'return (Mstatelist (parser name) (newenv)))))
     ;(valueof 'return (Mstate name '(()())))))
 
 ; main Mstate wrapper
@@ -92,6 +99,9 @@
 ; ------------------------------------------<
 ; Environment
 ;
+
+; returns new environment
+(define newenv (lambda () '(()())))
 
 ; adds variable to car st and value to (same position) of cadr :: ((variables) (values))
 ; replaces variable if state already exists
