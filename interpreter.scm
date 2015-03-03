@@ -99,9 +99,6 @@
 ; Environment
 ;
 
-; returns new environment
-(define newenv (lambda () '(()())))
-
 ; adds variable to car st and value to (same position) of cadr :: ((variables) (values))
 ; replaces variable if state already exists
 ; (addst 'x '(* 10 2) '(()()))
@@ -272,6 +269,10 @@
 ; ------------------------------------------<
 ; Abstractions
 ;
+
+
+; returns new environment
+(define newenv (lambda () '(()())))
 
 (define operator car)
 (define leftoperand cadr)
