@@ -58,9 +58,9 @@
                                    (leftoperand exp)
                                    (Mvalwrap (rightoperand exp) st)
                                    st))
-      
+      ; if left operand is in state, right operand is not null, and a variable that is in the right operand is currently defined
       ; otherwise (Mst_assign exp st)
-      (else (Mst_assign exp st)))))
+      (else (Mst_assign exp (replacest (leftoperand exp) 'redefining st))))))
 
 ; (Mst_assign '(= x 10) '(() ()))
 ; (Mst_assign '(= x 10) '((x) (4)))
@@ -156,7 +156,7 @@
 ; (replacest 'x '(* 4 10) '((y x z r) (2 5 10 20)))
 (define replacest
   (lambda (variable exp st)
-    (addst variable (Mvalwrap exp st) (removest variable st))))
+    (addst variable (Mvalwrap exp (removest variable st)) (removest variable st))))
 
 
 ; trim the first element off (operator st) and (leftoperand st)
@@ -187,6 +187,7 @@
 ; M Value
 ;
 
+; wrapper for true and false
 (define Mval
   (lambda (exp st)
     (cond
@@ -199,6 +200,7 @@
 (define Mvalwrap
   (lambda (exp state)
     (cond
+      ((eq? 'redefining exp) (error 'redefining))
       ((number? exp) exp)                     ; expression is number
       
       ((and                                   
@@ -209,6 +211,7 @@
       ((in? exp state) (valueof exp state))   ; expression is variable in state and defined
       
       ((and                       ; expression is not in state ^
+        (not (list? exp))         ; not a complex expression
         (not (number? exp))       ; not a number
         (atom? exp))              ; is an atom
        (error 'make-sure-your-variables-are-declared))
@@ -259,6 +262,10 @@
       (else (error 'bad-operator)))))
 
 
+; ------------------------------------------<
+; Abstractions
+;
+
 ; helper functions to get the first list in st and second
 ;  for some reason these didn't work in anything other than #lang racket, so changed all instances of first and second to operator and leftoperand respectively
 ;(define first car)
@@ -266,9 +273,6 @@
 
 ; the helper functions to determine where the operator and operands are depending on the form
 
-; ------------------------------------------<
-; Abstractions
-;
 
 
 ; returns new environment
