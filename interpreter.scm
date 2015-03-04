@@ -32,7 +32,8 @@
       ((eq? 'var     (operator exp)) (Mst_declare  exp st))
       ((eq? '=       (operator exp)) (Mst_assign   exp st))
       ((eq? 'return  (operator exp)) (Mst_return   exp st))
-      ((eq? 'if      (operator exp)) (Mst_if       exp st)))))
+      ((eq? 'if      (operator exp)) (Mst_if       exp st))
+      ((eq? 'begin   (operator exp)) (Mst_begin    exp st)))))
 
 ; '(var x expression) and '(var x)
 ; Declare variable (place in state with corresponding value), if doesn't have value then 'undefined
@@ -45,6 +46,7 @@
   (lambda (exp st)
     (cond
       ; and (right operand null, left operand in state, remove left operand from state then add new variable to state with undefined
+      ((in? (leftoperand exp) st) (error 'redefining))
       ((and
        (null? (rightoperand exp))
        (in? (leftoperand exp) st))
@@ -60,7 +62,7 @@
                                    st))
       ; if left operand is in state, right operand is not null, and a variable that is in the right operand is currently defined
       ; otherwise (Mst_assign exp st)
-      (else (Mst_assign exp (replacest (leftoperand exp) 'redefining st))))))
+      (else (Mst_assign exp st)))))
 
 ; (Mst_assign '(= x 10) '(() ()))
 ; (Mst_assign '(= x 10) '((x) (4)))
@@ -92,12 +94,51 @@
 
 ; (Mst_while
 
-; (Mst_{
-
+; (Mst_begin
+(define Mst_begin
+  (lambda (exp st)
+    (cond
+      ((null? exp) st)
+      (else (removelayer (Mstatelist exp (addlayer st)))))))
+            
 
 ; ------------------------------------------<
 ; Environment
 ;
+
+; adds a new layer to the state
+; (addlayer '(( (x)(1) ) (((y)(2)) (((z)(3))))))
+(define addlayer
+  (lambda (st)
+    (cons (newenv) (list st))))
+
+; removes most recently added layer in state
+; will only ever be called on multiple layers
+; (removelayer '(( (x)(1) ) (((y)(2)) (((z)(3))))))
+(define removelayer
+  (lambda (st)
+    (cond
+      ((or (isempty? st)
+           (not (islayered? st))) st)      ; remove layers only up to '(()()) or singly layered
+      (else (cons (caar (cdr st)) (cdr (car (cdr st))))))))
+                   
+; asks if the state is empty
+; (isempty? '(()()))
+(define isempty?
+  (lambda (st)
+    (cond
+      ((null? st) #t)
+      ((list? (car st)) (and (isempty? (car st)) (isempty? (cdr st))))
+      (else #f))))
+
+; asks if the state has been layered
+; (cadr '(()()))
+; (cadr '((()()) ((()()) ((()())))))
+(define islayered?
+  (lambda (st)
+    (cond
+      ((and (null? (cdr st)) (null? (cadr st))) #f)
+      (else #t))))
 
 ; adds variable to car st and value to (same position) of cadr :: ((variables) (values))
 ; replaces variable if state already exists
@@ -144,10 +185,12 @@
       
 ; is the variable present in env? has it been declared? (use env when not modifying state) 
 ; (in? 'x '((y x z) (1 2 3)))
+; TODO: DECIDE HERE if '(()()) or '(( () () ))
 (define in?
   (lambda (variable env)
     (cond
-      ((null? (car env)) #f)    ; (*()* ())
+      ((not (islayered? env)) (null? (car env)))      ; (*()* ())
+      ((null? (car env)) #f)    
       ((eq? variable (car (operator env))) #t)
       (else (in? variable (cdrcdr env))))))  ; if first element of (car st) is not the variable, new state is just cons of (trim first element from car and cdr of env)
 
@@ -156,7 +199,7 @@
 ; (replacest 'x '(* 4 10) '((y x z r) (2 5 10 20)))
 (define replacest
   (lambda (variable exp st)
-    (addst variable (Mvalwrap exp (removest variable st)) (removest variable st))))
+    (addst variable (Mvalwrap exp st) (removest variable st))))
 
 
 ; trim the first element off (operator st) and (leftoperand st)
@@ -164,7 +207,7 @@
 (define cdrcdr
   (lambda (env)
     (cond
-      ((null? (operator env)) '(() ()))
+      ((null? (operator env)) (newenv))
       (else (list 
              (cdr (operator env)) 
              (cdr (leftoperand env)))))))
@@ -174,7 +217,7 @@
 (define addtoend
   (lambda (a l)
     (cond
-      ((null? l) (cons a '()))
+      ((null? l) (list a))
       (else (cons (car l) (addtoend a (cdr l)))))))
 
 ; asks if `x` is an atom
@@ -200,7 +243,6 @@
 (define Mvalwrap
   (lambda (exp state)
     (cond
-      ((eq? 'redefining exp) (error 'redefining))
       ((number? exp) exp)                     ; expression is number
       
       ((and                                   
