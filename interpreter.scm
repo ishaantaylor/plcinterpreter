@@ -120,7 +120,7 @@
     (cond
       ((or (isempty? st)
            (not (islayered? st))) st)      ; remove layers only up to '(()()) or singly layered
-      (else (cons (caar (cdr st)) (cdr (car (cdr st))))))))
+      (else (car (cons (car (cdr st)) (cdr (cdr st))))))))
                    
 ; asks if the state is empty
 ; (isempty? '(()()))
@@ -139,6 +139,8 @@
     (cond
       ((and (null? (cdr st)) (null? (cadr st))) #f)
       (else #t))))
+
+; TODO: rewrite all these to be * functions (for lists as well)
 
 ; adds variable to car st and value to (same position) of cadr :: ((variables) (values))
 ; replaces variable if state already exists
@@ -318,7 +320,7 @@
 
 
 ; returns new environment
-(define newenv (lambda () '(()())))
+(define newenv (lambda () '(( ()() )) ))
 
 (define operator car)
 (define leftoperand cadr)
