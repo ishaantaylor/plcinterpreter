@@ -5,7 +5,7 @@
   (lambda ()
     (list 
      (interpret "1.txt") (interpret "2.txt") (interpret "3.txt") (interpret "4.txt") (interpret "5.txt") (interpret "6.txt") (interpret "7.txt") (interpret "8.txt") (interpret "9.txt") (interpret "10.txt")
-     (interpret "15.txt") (interpret "16.txt") (interpret "17.txt") (interpret "18.txt"))))    
+     (interpret "11.txt") (interpret "12.txt"))))    
 
 ; start feeds the interpreters output to Mst
 (define interpret
@@ -183,8 +183,8 @@
       ; if (and (variable is return) (return value is boolean)) return Mval of the variable (Mval returns true or false, not #t or #f
       ((and 
        (eq? variable 'return)
-       (eq? (valueof 'return env) #t) 
-        (eq? (valueof 'return env) #f)) (Mval 'return env))
+       (or (eq? (valueof 'return env) #t) 
+        (eq? (valueof 'return env) #f))) (Mval 'return env))
       (else (valueof variable env)))))
       
 ; returns the value of a variable thats in the state
