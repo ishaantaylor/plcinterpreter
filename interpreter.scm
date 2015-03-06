@@ -184,15 +184,37 @@
       (else (valueof variable (cdrcdr env))))))
       
 ; is the variable present in env? has it been declared? (use env when not modifying state) 
-; (in? 'x '((y x z) (1 2 3)))
+; (in? 'x '(((y x z) (1 2 3))))
+; (in? 'x '(()()))
+; (in? 'x '(((x)(1))))
+; (in? 'x '(((y)(1))))
+; (in? 'x '((()())))
+; (in? 'x '(   ((a b)(1 2))  ( ((z)(1))   (((y)(2))   (((x)(1)))))))
+; (in? 'x '((()()) ((()()) ((()())))))
 ; TODO: DECIDE HERE if '(()()) or '(( () () ))
 (define in?
   (lambda (variable env)
     (cond
-      ((not (islayered? env)) (null? (car env)))      ; (*()* ())
-      ((null? (car env)) #f)    
+      ((null? env) #f)
+      ((null? (car env)) #f)
+      ((null? (cdr env)) (inl? variable (car env)))
+      ((isempty? env) #f)
+      ((not (islayered? env)) (inl? variable (car env)))
+      (else (or (inl? variable (car env)) (in? variable (car (cdr env))))))))
+      
+            ;((list? (car env) (or (in? variable (car env)) (in? variable (cdr env)))))
+      ;((eq? variable (car (operator env))) #t)
+      ;(else (in? variable (cdrcdr env))))))  ; if first element of (car st) is not the variable, new state is just cons of (trim first element from car and cdr of env)
+
+; is the variable present in a layer in the environment?
+; (inl? 'x '((a b x)(1 4 2)))
+; (inl? 'x '(()()))
+(define inl?
+  (lambda (variable env)
+    (cond
+      ((null? (car env)) #f)    ; (*()* ())
       ((eq? variable (car (operator env))) #t)
-      (else (in? variable (cdrcdr env))))))  ; if first element of (car st) is not the variable, new state is just cons of (trim first element from car and cdr of env)
+      (else (inl? variable (cdrcdr env))))))  ; if first element of (car st) is not the variable, new state is just cons of (trim first element from car and cdr of env)
 
 ; replace variable's value with exp
 ; add variable and (expression evaluated with current state) into (st that has just removed current 'variable's state)
