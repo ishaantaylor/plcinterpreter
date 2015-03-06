@@ -57,8 +57,7 @@
 (define Mst_assign
   (lambda (exp st)
     (cond
-      ((in? (leftoperand exp) st) (addst (leftoperand exp) (Mvalwrap (rightoperand exp) st) (removest (leftoperand exp) st)))
-      ((eq? (operator exp) 'var) (addst (leftoperand exp) (Mvalwrap (rightoperand exp) st) st))    ; dont think i need this
+      ((in? (leftoperand exp) st) (replacest (leftoperand exp) (Mvalwrap (rightoperand exp) st) st))
       (else (error 'declare-your-variables-before-assigning-it-a-value)))))
 
 ; '(return expression)
