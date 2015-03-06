@@ -148,18 +148,33 @@
       ((in? variable st) (replacest variable exp st))
       (else (list 
              (addtoend variable (operator (car st)))
-             (addtoend exp (leftoperand (car st))))))))
+             (addtoend expv (leftoperand (car st))))
+                  (cdr st))))))
 
-; removes variable and corresponding value from st
-; (removest 'r '(((y x f j r u i l) (2 5 9 1 2 3 5 21))))
+
+; removes variable and corresponding value from state
+; (removest 'r '(((a b r c) (1 2 3 4))))
+; (removest 'r '( ((a b)(1 2)) (((c r d)(3 6 4)) (((z) (1))))))
 (define removest
   (lambda (variable st)
     (cond
-      ((null? (operator (car st))) (newlayer))
-      ((eq? variable (car (operator (car st)))) (removest variable (cdrcdr (car st))))
+      ((isempty? st) st)
+      ((inl? variable (car st)) 
+       (cond
+         ((islayered? st) (list (cons (removestl variable (car st)) (cdr st))))
+         (else (list (removestl variable (car st))))))
+      (else (cons (car st) (removest variable (car (cdr st))))))))
+
+; removes variable and corresponding value from layer in state
+; (removest 'r '((y x f j r u i l) (2 5 9 1 2 3 5 21)))
+(define removestl
+  (lambda (variable st)
+    (cond
+      ((null? (operator st)) (newlayer))
+      ((eq? variable (car (operator st))) (removestl variable (cdrcdr st)))
       (else (list 
-             (cons (car (operator (car st))) (car (removest variable (cdrcdr (car st)))))
-             (cons (car (leftoperand (car st))) (cadr (removest variable (cdrcdr (car st))))))))))
+             (cons (car (operator st)) (car (removestl variable (cdrcdr st))))
+             (cons (car (leftoperand st)) (cadr (removestl variable (cdrcdr st)))))))))
 
 ; valueof wrap returns not #t or #f but true or false when called
 (define valueofwrap
@@ -223,13 +238,15 @@
   (lambda (variable exp st)
     (addst variable (Mvalwrap exp st) (removest variable st))))
 
-
+  
 ; trim the first element off (operator st) and (leftoperand st)
+; (cdrcdr '(()()))
 ; (cdrcdr '((1 2 3) (4 5 6)))
 (define cdrcdr
   (lambda (env)
     (cond
-      ((null? (operator env)) (newenv))
+      ((null? env) (newenv))
+      ((isempty? env) env)
       (else (list 
              (cdr (operator env)) 
              (cdr (leftoperand env)))))))
