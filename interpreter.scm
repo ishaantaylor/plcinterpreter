@@ -147,19 +147,19 @@
     (cond
       ((in? variable st) (replacest variable exp st))
       (else (list 
-             (addtoend variable (operator st))
-             (addtoend exp (leftoperand st)))))))
+             (addtoend variable (operator (car st)))
+             (addtoend exp (leftoperand (car st))))))))
 
 ; removes variable and corresponding value from st
-; (removest 'r '((y x f j r u i l) (2 5 9 1 2 3 5 21)))
+; (removest 'r '(((y x f j r u i l) (2 5 9 1 2 3 5 21))))
 (define removest
   (lambda (variable st)
     (cond
-      ((null? (operator st)) '(() ()))
-      ((eq? variable (car (operator st))) (removest variable (cdrcdr st)))
+      ((null? (operator (car st))) (newlayer))
+      ((eq? variable (car (operator (car st)))) (removest variable (cdrcdr (car st))))
       (else (list 
-             (cons (car (operator st)) (car (removest variable (cdrcdr st))))
-             (cons (car (leftoperand st)) (cadr (removest variable (cdrcdr st)))))))))
+             (cons (car (operator (car st))) (car (removest variable (cdrcdr (car st)))))
+             (cons (car (leftoperand (car st))) (cadr (removest variable (cdrcdr (car st))))))))))
 
 ; valueof wrap returns not #t or #f but true or false when called
 (define valueofwrap
@@ -178,7 +178,8 @@
 (define valueof
   (lambda (variable env)
     (cond
-      ((null? (operator env)) #f)      ; hopefully will never be called
+      ((isempty? (operator (car env))) #f)      ; hopefully will never be called
+      ((islayered? env) (valueof variable (car env)) (valueof variable (cdr env)))
       ((eq? variable (car (operator env))) (car (leftoperand env)))
       (else (valueof variable (cdrcdr env))))))
       
