@@ -318,6 +318,8 @@
 
 ; returns new environment
 (define newenv (lambda () '(( ()() )) ))
+; returns new layer
+(define newlayer (lambda () '(()())))
 
 (define operator car)
 (define leftoperand cadr)
