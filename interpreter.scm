@@ -189,14 +189,24 @@
       (else (valueof variable env)))))
       
 ; returns the value of a variable thats in the state
-; (valueof 'r '((y x f j r u i l) (2 5 9 1 2 3 5 21)))
+; (valueof 'r '(((y x f j r u i l) (2 5 9 1 2 3 5 21))))
+; (valueof 'r '( ((a b)(1 2)) (((c r d)(3 6 4)) (((z) (1))))))
 (define valueof
+  (lambda (var env)
+    (cond 
+      ((isempty? (operator (car env))) #f)      ; hopefully will never be called
+      ((inl? var (car env)) (valueofl var (car env)))
+      ((islayered? env) (valueof var (car (cdr env))))
+      (else #f))))
+
+; returns the value of a variable thats in the first layer
+; (valueofl 'r '((y x f j r u i l) (2 5 9 1 2 3 5 21)))
+(define valueofl
   (lambda (variable env)
     (cond
-      ((isempty? (operator (car env))) #f)      ; hopefully will never be called
-      ((islayered? env) (valueof variable (car env)) (valueof variable (cdr env)))
+      ((isempty? (operator env)) #f)      ; hopefully will never be called
       ((eq? variable (car (operator env))) (car (leftoperand env)))
-      (else (valueof variable (cdrcdr env))))))
+      (else (valueofl variable (cdrcdr env))))))
       
 ; is the variable present in env? has it been declared? (use env when not modifying state) 
 ; (in? 'x '(((y x z) (1 2 3))))
