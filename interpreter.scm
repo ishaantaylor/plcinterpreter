@@ -94,23 +94,31 @@
 ;
 
 ; adds a new layer to the state
+; (addlayer (newenv))
+; (addlayer '((() ()) ((() ()))))
+;    ==> ((() ()) ((() ()) ((() ()))))
+; (addlayer '((() ()) ((() ()) ((() ())))))
+;    ==> ((() ()) ((() ()) ((() ()) ((() ())))))
+; (addlayer '((() ()) ((() ()) ((() ()) ((() ()))))))
 ; (addlayer '(( (x)(1) ) (((y)(2)) (((z)(3))))))
 (define addlayer
   (lambda (st)
-    (cons (newenv) (list st))))
+    (cons (newlayer) (list st))))
 
 ; removes most recently added layer in state
 ; will only ever be called on multiple layers
-; (removelayer '(( (x)(1) ) (((y)(2)) (((z)(3))))))
+; (removelayer '(((y) (2)) (((z) (3)))))
+; (removelayer '(( (x)(1) ) (((y)(2)) (((z)(3)) ))))
 (define removelayer
   (lambda (st)
     (cond
       ((or (isempty? st)
-           (not (islayered? st))) st)      ; remove layers only up to '(()()) or singly layered
+           (not (islayered? st))) st)      ; remove layers only up to '((()())) or singly layered
       (else (car (cons (car (cdr st)) (cdr (cdr st))))))))
                    
 ; asks if the state is empty
-; (isempty? '(()()))
+; (isempty? '((()())))
+; (isempty? '( ((x)(1)) (((y)(2)) (((z)(3)) ))))
 (define isempty?
   (lambda (st)
     (cond
@@ -119,12 +127,14 @@
       (else #f))))
 
 ; asks if the state has been layered
-; (cadr '(()()))
-; (cadr '((()()) ((()()) ((()())))))
+; (islayered? '(()()))
+; (islayered? '(( ()() ))
+; (islayered? '((()()) ((()()) ((()())))))
 (define islayered?
   (lambda (st)
     (cond
-      ((and (null? (cdr st)) (null? (cadr st))) #f)
+      ((null? (cdr st)) #f)                                     ; single 'environment'
+      ((not (null? (cdr st))) (not (null? (cadr st))))          ; single 'layer' (#f)
       (else #t))))
 
 ; TODO: rewrite all these to be * functions (for lists as well)
