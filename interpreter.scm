@@ -206,7 +206,6 @@
 ; (in? 'x '((()())))
 ; (in? 'x '(   ((a b)(1 2))  ( ((z)(1))   (((y)(2))   (((x)(1)))))))
 ; (in? 'x '((()()) ((()()) ((()())))))
-; TODO: DECIDE HERE if '(()()) or '(( () () ))
 (define in?
   (lambda (variable env)
     (cond
@@ -216,10 +215,6 @@
       ((isempty? env) #f)
       ((not (islayered? env)) (inl? variable (car env)))
       (else (or (inl? variable (car env)) (in? variable (car (cdr env))))))))
-      
-            ;((list? (car env) (or (in? variable (car env)) (in? variable (cdr env)))))
-      ;((eq? variable (car (operator env))) #t)
-      ;(else (in? variable (cdrcdr env))))))  ; if first element of (car st) is not the variable, new state is just cons of (trim first element from car and cdr of env)
 
 ; is the variable present in a layer in the environment?
 ; (inl? 'x '((a b x)(1 4 2)))
