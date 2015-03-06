@@ -137,20 +137,18 @@
       ((not (null? (cdr st))) (not (null? (cadr st))))          ; single 'layer' (#f)
       (else #t))))
 
-; TODO: rewrite all these to be * functions (for lists as well)
 
-; adds variable to car st and value to (same position) of cadr :: ((variables) (values))
+; adds variable and value to [current scope] :: ((car (car st)) (cadr (car st))) :: (((variables) (values)) (lower level states))
 ; replaces variable if state already exists
-; (addst 'x '(* 10 2) '(()()))
+; (addst 'x '10 '((()())))
 (define addst
-  (lambda (variable exp st)
+  (lambda (variable expv st)
     (cond
-      ((in? variable st) (replacest variable exp st))
-      (else (list 
+      ((in? variable st) (cons (addst variable expv (car (removest variable st))) (cdr st)))
+      (else (cons (list 
              (addtoend variable (operator (car st)))
              (addtoend expv (leftoperand (car st))))
                   (cdr st))))))
-
 
 ; removes variable and corresponding value from state
 ; (removest 'r '(((a b r c) (1 2 3 4))))
