@@ -66,7 +66,7 @@
 ; (Mst_return '(return (* 10 x)) '((x) (9)))
 (define Mst_return
   (lambda (exp st)
-    (addst (operator exp) (Mvalwrap (leftoperand exp) st) st)))
+    (addst (operator exp) (Mval (leftoperand exp) st) st)))
 
 ; (Mst_if '(if (>= x y) (= m x) (= m y)) '((x y m) (1 2 0)))
 ; (Mst_if '(if (== x y) (= x 10)) '((x y) (5 6)))
@@ -183,9 +183,8 @@
       ; if (and (variable is return) (return value is boolean)) return Mval of the variable (Mval returns true or false, not #t or #f
       ((and 
        (eq? variable 'return)
-       (or 
-        (eq? (valueof 'return env) #t) 
-        (eq? (valueof 'return env) #f))) (Mval 'return env))
+       (eq? (valueof 'return env) #t) 
+        (eq? (valueof 'return env) #f)) (Mval 'return env))
       (else (valueof variable env)))))
       
 ; returns the value of a variable thats in the state
@@ -239,11 +238,11 @@
 ; replace variable's value with exp
 ; add variable and (expression evaluated with current state) into (st that has just removed current 'variable's state)
 ; (replacest 'x '(* 4 10) '((y x z r) (2 5 10 20)))
+; TODO: rewrite this to replace value in place instead of removing it and adding it blindly
 (define replacest
-  (lambda (variable exp st)
-    (addst variable (Mvalwrap exp st) (removest variable st))))
+  (lambda (variable expv st)
+    (addst variable expv (removest variable st))))
 
-  
 ; trim the first element off (operator st) and (leftoperand st)
 ; (cdrcdr '(()()))
 ; (cdrcdr '((1 2 3) (4 5 6)))
@@ -284,6 +283,11 @@
 
 ; M_value takes an expression, a state and returns its evaluation (#t, #f)
 ; (Mval '(+ 1 (* 5 x)) '((x) (10)))
+
+; TODO: figure out why this error is happening
+;      (Mst_assign '(= z x) '(((x y z)(#t #f undefined))))
+
+
 (define Mvalwrap
   (lambda (exp state)
     (cond
@@ -297,6 +301,7 @@
       ((in? exp state) (valueof exp state))   ; expression is variable in state and defined
       
       ((and                       ; expression is not in state ^
+        (not (in? exp state))
         (not (list? exp))         ; not a complex expression
         (not (number? exp))       ; not a number
         (atom? exp))              ; is an atom
