@@ -141,6 +141,8 @@
 ; adds variable and value to [current scope] :: ((car (car st)) (cadr (car st))) :: (((variables) (values)) (lower level states))
 ; replaces variable if state already exists
 ; (addst 'x '10 '((()())))
+; (addst 'z '1000 (addlayer '(((y) (100)) (((x) (10))))))
+; (addst 'z '1000 '(((y) (100)) (((x) (10)))))
 (define addst
   (lambda (variable expv st)
     (cond
