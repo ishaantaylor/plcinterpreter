@@ -45,24 +45,12 @@
 (define Mst_declare
   (lambda (exp st)
     (cond
-      ; and (right operand null, left operand in state, remove left operand from state then add new variable to state with undefined
+      ; prevent redefining
       ((in? (leftoperand exp) st) (error 'redefining))
-      ((and
-       (null? (rightoperand exp))
-       (in? (leftoperand exp) st))
-       (addst (leftoperand exp) 'undefined (removest (leftoperand exp) st)))
-      
-      ; if right operand is null and left operand is not in state, add left operand to state with undefined
+      ; if right operand is null add left operand to state with undefined
       ((null? (rightoperand exp)) (addst (leftoperand exp) 'undefined st))
-      
-      ; if left operand is not in state, right operand is not null, add left value to state with (Mvalwrap (rightoperand exp) ... (must be Mvalwrap because dont want to save state as true or false, but #t and #f
-      ((not (in? (leftoperand exp) st)) (addst 
-                                   (leftoperand exp)
-                                   (Mvalwrap (rightoperand exp) st)
-                                   st))
-      ; if left operand is in state, right operand is not null, and a variable that is in the right operand is currently defined
-      ; otherwise (Mst_assign exp st)
-      (else (Mst_assign exp st)))))
+      ; if right operand is not null, add left value to state with (Mvalwrap (rightoperand exp) ... (must be Mvalwrap because dont want to save state as true or false, but #t and #f
+      (else (addst (leftoperand exp) (Mvalwrap (rightoperand exp) st) st)))))
 
 ; (Mst_assign '(= x 10) '(() ()))
 ; (Mst_assign '(= x 10) '((x) (4)))
