@@ -18,10 +18,11 @@
   (lambda (exp st cps)
     (cond
       ((null? exp) st); (valueof 'return st))
-      (else (Mstatelist (cdr exp) (Mst (car exp) st cps 
-                                       (lambda (R) R)
-                                       (lambda (B) B)
-                                       (lambda (C) C)))))))
+      (else (Mst exp st 
+                 (lambda (cps) cps)
+                 (lambda (R) R)
+                 (lambda (B) B)
+                 (lambda (C) C))))))
 
 
 ; ------------------------------------------<
@@ -30,15 +31,30 @@
 
 ; main Mstate function that directs the rest of the Mstates, called by interpret
 (define Mst
-  (lambda (exp st continuation return break continue)
+  (lambda (exps st continuation return break continue)
     (cond
-      ((null? exp)   st)
-      ((eq? 'return  (operator exp)) (return (Mvalwrap exp st)))
-      ((eq? 'var     (operator exp)) (Mst_declare  exp st))
-      ((eq? '=       (operator exp)) (Mst_assign   exp st))
-      ((eq? 'if      (operator exp)) (Mst_if       exp st return break continue continuation))
-      ((eq? 'begin   (operator exp)) (Mst_begin    exp st return break continue continuation))
-      ((eq? 'while   (operator exp)) (Mst_while    exp st return break continue continuation)) 
+      ((null? (car exps))   (continuation st))
+      ((eq? 'return   (operator (car exps)) (return (Mvalwrap exps st))))
+      ((eq? 'var      (operator (car exps)) (Mst_declare  exps st)))
+      ((eq? '=        (operator (car exps)) (Mst_assign   exps st)))
+      ((eq? 'if       (operator (car exps)) (Mst_if       exps st
+                                                         (lambda (v)
+                                                           (Mst v (cdr exps)
+                                                                (lambda (v2)
+                                                                  (continuation v2))
+                                                                return break continue)))))
+      ((eq? 'begin    (operator (car exps)) (Mst_begin    exps st (lambda (v)
+                                                                  (Mst v (cdr exps)
+                                                                       (lambda (v2)
+                                                                         (continuation v2))
+                                                                       return break continue)))))
+      ((eq? 'while    (operator (car exps)) (Mst_while    exps st (lambda (v)
+                                                                  (Mst v (cdr exps)
+                                                                       (lambda (v2)
+                                                                         (continuation v2))
+                                                                       return break continue)))))
+      ((eq? 'break    (operator (car exps))) (break st))
+      ((eq? 'continue (operator (car exps))) (continue st))
       (else (error 'incorrect-command-identifier-in-code)))))
 
 ; '(var x expression) and '(var x)
@@ -72,7 +88,7 @@
 ; (Mst_return '(return 10) '(()()))
 ; (Mst_return '(return (* 10 x)) '((x) (9)))
 (define Mst_return
-  (lambda (exp st)
+  (lambda (exp st continuation return break continue)
     (addst (operator exp) (Mval (leftoperand exp) st) st)))
 
 ; (Mst_if '(if (>= x y) (= m x) (= m y)) '((x y m) (1 2 0)))
@@ -80,7 +96,7 @@
 ; (Mst_if '(if (|| (! z) false) (= z (! z)) (= z z)) '((x y z) (10 20 true))
 ; cadr = condition, caddr = statement1, cadddr = statement2
 (define Mst_if
-  (lambda (exp st return break continue continuation)
+  (lambda (exp st continuation return break continue)
     (cond
       ((Mvalwrap (cadr exp) st) (Mst (caddr exp) st return break continue
                                      (lambda (v) 
@@ -90,11 +106,11 @@
 
 ; (Mst_while
 (define Mst_while
-  (lambda (exp st return continuation)
-    (while (leftoperand exp) (rightoperand exp) st return (lambda (k) k) (lambda (c) c) continuation)))
+  (lambda (exp st continuation return break continue)
+    (while (leftoperand exp) (rightoperand exp) st continuation return break continue)))
 
 (define while
-  (lambda (cond body st return break continue continuation)
+  (lambda (cond body st continuation return break continue)
     (letrec ((loop (lambda (cond body state break continue)
                      (if (Mbool1 cond state)
                          (Mst body state (lambda (v)
