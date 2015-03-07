@@ -10,11 +10,12 @@
 ; start feeds the interpreters output to Mst
 (define interpret
   (lambda (name)
-    (valueofwrap 'return (Mstatelist (parser name) (newenv)))))
+    (valueofwrap 'return (Mstatelist (parser name) (newenv) 
+                                     (lambda (v) v))))
 
 ; main Mstate wrapper
 (define Mstatelist 
-  (lambda (exp st)
+  (lambda (exp st return)
     (cond
       ((null? exp) st); (valueof 'return st))
       (else (Mstatelist (cdr exp) (Mst (car exp) st))))))
@@ -26,15 +27,15 @@
 
 ; main Mstate function that directs the rest of the Mstates, called by interpret
 (define Mst
-  (lambda (exp st)
+  (lambda (exp st return)
     (cond
       ((null? exp)   st)
+      ((eq? 'return  (operator exp)) (return (Mval (leftoperand exp) st)))
       ((eq? 'var     (operator exp)) (Mst_declare  exp st))
       ((eq? '=       (operator exp)) (Mst_assign   exp st))
-      ((eq? 'return  (operator exp)) (Mst_return   exp st))
-      ((eq? 'if      (operator exp)) (Mst_if       exp st))
-      ((eq? 'begin   (operator exp)) (Mst_begin    exp st))
-      ((eq? 'while   (operator exp)) (Mst_while    exp st))
+      ((eq? 'if      (operator exp)) (Mst_if       exp st return (lambda (v) v)))
+      ((eq? 'begin   (operator exp)) (Mst_begin    exp st return (lambda (v) v)))
+      ((eq? 'while   (operator exp)) (Mst_while    exp st return (lambda (k) k) (lambda (c) c)))
       (else (error 'incorrect-command-identifier-in-code)))))
 
 ; '(var x expression) and '(var x)
