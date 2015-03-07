@@ -1,23 +1,25 @@
 (load "simpleParser.scm")
 
 ; test
-(define testvalid
-  (lambda ()
-    (list 
-     (interpret "1.txt") (interpret "2.txt") (interpret "3.txt") (interpret "4.txt") (interpret "5.txt") (interpret "6.txt") (interpret "7.txt") (interpret "8.txt") (interpret "9.txt") (interpret "10.txt")
-     (interpret "11.txt") (interpret "12.txt"))))    
+;(define testvalid
+;  (lambda ()
+;    (list 
+;     (interpret "1.txt") (interpret "2.txt") (interpret "3.txt") (interpret "4.txt") (interpret "5.txt") (interpret "6.txt") (interpret "7.txt") (interpret "8.txt") (interpret "9.txt") (interpret "10.txt")
+;     (interpret "11.txt") (interpret "12.txt"))))    
 
 ; start feeds the interpreters output to Mst
 (define interpret
   (lambda (name)
-    (valueofwrap 'return (Mstatelist (parser name) (newenv)))))
+    (call/cc
+     (lambda (return)
+       (Mstatelist (parser name) (newenv) return)))))
 
 ; main Mstate wrapper
 (define Mstatelist 
-  (lambda (exp st)
+  (lambda (exp st return)
     (cond
       ((null? exp) st); (valueof 'return st))
-      (else (Mstatelist (cdr exp) (Mst (car exp) st))))))
+      (else (Mstatelist (cdr exp) (Mst (car exp) st return) return)))))
 
 
 ; ------------------------------------------<
@@ -26,16 +28,23 @@
 
 ; main Mstate function that directs the rest of the Mstates, called by interpret
 (define Mst
-  (lambda (exp st)
+  (lambda (exp st return)
     (cond
       ((null? exp)   st)
-      ((eq? 'var     (operator exp)) (Mst_declare  exp st))
-      ((eq? '=       (operator exp)) (Mst_assign   exp st))
-      ((eq? 'return  (operator exp)) (Mst_return   exp st))
-      ((eq? 'if      (operator exp)) (Mst_if       exp st))
-      ((eq? 'begin   (operator exp)) (Mst_begin    exp st))
-      ((eq? 'while   (operator exp)) (Mst_while    exp st))
-      (else (error 'incorrect-command-identifier-in-code)))))
+      ((not (list? exp))
+       (cond
+         ((eq? 'break exp)    'break)
+         ((eq? 'continue exp) 'continue)
+         ((eq? 'begin exp)    (addlayer st))))
+      ((eq? 'break    (operator exp)) 'break)
+      ((eq? 'continue (operator exp)) 'continue)
+      ((eq? 'var      (operator exp)) (Mst_declare  exp st))
+      ((eq? '=        (operator exp)) (Mst_assign   exp st))
+      ((eq? 'return   (operator exp)) (Mst_return   exp st return))
+      ((eq? 'if       (operator exp)) (Mst_if       exp st return))
+      ((eq? 'begin    (operator exp)) (Mst_begin    exp st return))
+      ((eq? 'while    (operator exp)) (Mst_while    exp st return))
+      (else (error 'out-of-place-command-identifier-in-code)))))
 
 ; '(var x expression) and '(var x)
 ; Declare variable (place in state with corresponding value), if doesn't have value then 'undefined
@@ -67,15 +76,15 @@
 ; (Mst_return '(return 10) '(()()))
 ; (Mst_return '(return (* 10 x)) '((x) (9)))
 (define Mst_return
-  (lambda (exp st)
-    (addst (operator exp) (Mval (leftoperand exp) st) st)))
+  (lambda (exp st return)
+    (return (Mval (rightoperand exp) st))))
 
 ; (Mst_if '(if (>= x y) (= m x) (= m y)) '((x y m) (1 2 0)))
 ; (Mst_if '(if (== x y) (= x 10)) '((x y) (5 6)))
 ; (Mst_if '(if (|| (! z) false) (= z (! z)) (= z z)) '((x y z) (10 20 true))
 ; cadr = condition, caddr = statement1, cadddr = statement2
 (define Mst_if
-  (lambda (exp st)
+  (lambda (exp st return)
     (cond
       ((Mvalwrap (cadr exp) st) (Mst (caddr exp) st))                 ; if cond true
       ((and (null? (cdddr exp)) (not (Mvalwrap (cadr exp) st))) st)   ; 
@@ -83,18 +92,25 @@
 
 ; (Mst_while
 (define Mst_while
-  (lambda (exp st)
-    (while (leftoperand exp) (rightoperand exp) st)))
+  (lambda (exp st return)
+    (while (leftoperand exp) (rightoperand exp) st return)))
 
 (define while
-  (lambda (cond body st)
-    (letrec ((loop (lambda (cond body state)
-                     (if (Mbool1 cond state)
-                         (loop cond body
-                               (Mst body state))
-                         state))))
-                         (loop cond body st))))
-
+  (lambda (c b st return)
+      (call/cc
+       (lambda (break)
+         (letrec ((loop (lambda (cond body state)
+                          (if (Mbool1 cond state)
+                              (loop cond body
+                                    (call/cc 
+                                     (lambda (continue) 
+                                       (cond
+                                         ((eq? 'continue (car body)) (continue state))
+                                         ((eq? 'break    (car body)) (break    state))
+                                         (else (Mst body state))))))
+                              state))))
+           (loop c b st))))))
+    
 ; (Mst_begin
 (define Mst_begin
   (lambda (exp st)
