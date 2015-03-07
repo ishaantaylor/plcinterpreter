@@ -33,7 +33,9 @@
       ((eq? '=       (operator exp)) (Mst_assign   exp st))
       ((eq? 'return  (operator exp)) (Mst_return   exp st))
       ((eq? 'if      (operator exp)) (Mst_if       exp st))
-      ((eq? 'begin   (operator exp)) (Mst_begin    exp st)))))
+      ((eq? 'begin   (operator exp)) (Mst_begin    exp st))
+      ((eq? 'while   (operator exp)) (Mst_while    exp st))
+      (else (error 'incorrect-command-identifier-in-code)))))
 
 ; '(var x expression) and '(var x)
 ; Declare variable (place in state with corresponding value), if doesn't have value then 'undefined
@@ -80,6 +82,18 @@
       (else (Mst (cadddr exp) st)))))
 
 ; (Mst_while
+(define Mst_while
+  (lambda (exp st)
+    (while (leftoperand exp) (rightoperand exp) st)))
+
+(define while
+  (lambda (cond body st)
+    (letrec ((loop (lambda (cond body state)
+                     (if (Mbool1 cond state)
+                         (loop cond body
+                               (Mst body state))
+                         state))))
+                         (loop cond body st))))
 
 ; (Mst_begin
 (define Mst_begin
