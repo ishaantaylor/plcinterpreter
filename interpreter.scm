@@ -264,10 +264,10 @@
 (define in?
   (lambda (variable env)
     (cond
-      ((null? env) #f)
-      ((null? (car env)) #f)
-      ((null? (cdr env)) (inl? variable (car env)))
+      ((void? env) #f)
       ((isempty? env) #f)
+      ;((null? (car env)) #f)
+      ((null? (cdr env)) (inl? variable (car env)))
       ((not (islayered? env)) (inl? variable (car env)))
       (else (or (inl? variable (car env)) (in? variable (car (cdr env))))))))
 
@@ -312,7 +312,7 @@
 ;
 
 ; wrapper for true and false
-(define Mval
+(define Mval 
   (lambda (exp st)
     (cond
       ((eq? (Mvalwrap exp st) #t) 'true)
@@ -335,14 +335,16 @@
         (in? exp state)                          ; in state
         (eq? (valueof exp state) 'undefined))    ; undefined
        (error 'make-sure-your-variables-are-defined-with-a-value))
+      
         
       ((in? exp state) (valueof exp state))   ; expression is variable in state and defined
       
       ((and                       ; expression is not in state ^
-        (not (in? exp state))
+        (not (void? state))
         (not (list? exp))         ; not a complex expression
         (not (number? exp))       ; not a number
-        (atom? exp))              ; is an atom
+        (atom? exp)               ; is an atom
+        (not (in? exp state)))     
        (error 'make-sure-your-variables-are-declared))
        
       ((eq? '+ (operator exp)) (+ (Mvalwrap (leftoperand exp) state) (Mvalwrap (rightoperand exp) state)))
