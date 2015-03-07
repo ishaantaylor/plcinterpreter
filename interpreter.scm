@@ -5,20 +5,23 @@
   (lambda ()
     (list 
      (interpret "1.txt") (interpret "2.txt") (interpret "3.txt") (interpret "4.txt") (interpret "5.txt") (interpret "6.txt") (interpret "7.txt") (interpret "8.txt") (interpret "9.txt") (interpret "10.txt")
-     (interpret "11.txt") (interpret "12.txt"))))    
+     (interpret "11.txt") (interpret "12.txt"))))
 
 ; start feeds the interpreters output to Mst
 (define interpret
   (lambda (name)
     (valueofwrap 'return (Mstatelist (parser name) (newenv) 
-                                     (lambda (v) v))))
+                                     (lambda (v) v)))))
 
 ; main Mstate wrapper
 (define Mstatelist 
-  (lambda (exp st return)
+  (lambda (exp st cps)
     (cond
       ((null? exp) st); (valueof 'return st))
-      (else (Mstatelist (cdr exp) (Mst (car exp) st))))))
+      (else (Mstatelist (cdr exp) (Mst (car exp) st cps 
+                                       (lambda (R) R)
+                                       (lambda (B) B)
+                                       (lambda (C) C)))))))
 
 
 ; ------------------------------------------<
@@ -27,15 +30,15 @@
 
 ; main Mstate function that directs the rest of the Mstates, called by interpret
 (define Mst
-  (lambda (exp st return)
+  (lambda (exp st continuation return break continue)
     (cond
       ((null? exp)   st)
-      ((eq? 'return  (operator exp)) (return (Mval (leftoperand exp) st)))
+      ((eq? 'return  (operator exp)) (return (Mvalwrap exp st)))
       ((eq? 'var     (operator exp)) (Mst_declare  exp st))
       ((eq? '=       (operator exp)) (Mst_assign   exp st))
-      ((eq? 'if      (operator exp)) (Mst_if       exp st return (lambda (v) v)))
-      ((eq? 'begin   (operator exp)) (Mst_begin    exp st return (lambda (v) v)))
-      ((eq? 'while   (operator exp)) (Mst_while    exp st return (lambda (k) k) (lambda (c) c)))
+      ((eq? 'if      (operator exp)) (Mst_if       exp st return break continue continuation))
+      ((eq? 'begin   (operator exp)) (Mst_begin    exp st return break continue continuation))
+      ((eq? 'while   (operator exp)) (Mst_while    exp st return break continue continuation)) 
       (else (error 'incorrect-command-identifier-in-code)))))
 
 ; '(var x expression) and '(var x)
@@ -63,6 +66,7 @@
       ((in? (leftoperand exp) st) (replacest (leftoperand exp) (Mvalwrap (rightoperand exp) st) st))
       (else (error 'declare-your-variables-before-assigning-it-a-value)))))
 
+; i dont use this
 ; '(return expression)
 ; create new return variable and put it in state)
 ; (Mst_return '(return 10) '(()()))
@@ -76,23 +80,25 @@
 ; (Mst_if '(if (|| (! z) false) (= z (! z)) (= z z)) '((x y z) (10 20 true))
 ; cadr = condition, caddr = statement1, cadddr = statement2
 (define Mst_if
-  (lambda (exp st)
+  (lambda (exp st return break continue continuation)
     (cond
-      ((Mvalwrap (cadr exp) st) (Mst (caddr exp) st))                 ; if cond true
-      ((and (null? (cdddr exp)) (not (Mvalwrap (cadr exp) st))) st)   ; 
-      (else (Mst (cadddr exp) st)))))
+      ((Mvalwrap (cadr exp) st) (Mst (caddr exp) st return break continue
+                                     (lambda (v) 
+                                       (continuation v))))                 ; if cond true
+      ((and (null? (cdddr exp)) (continuation (not (Mvalwrap (cadr exp) st))) st))   ; 
+      (else (Mst (cadddr exp) st return)))))
 
 ; (Mst_while
 (define Mst_while
-  (lambda (exp st)
-    (while (leftoperand exp) (rightoperand exp) st)))
+  (lambda (exp st return continuation)
+    (while (leftoperand exp) (rightoperand exp) st return (lambda (k) k) (lambda (c) c) continuation)))
 
 (define while
-  (lambda (cond body st)
-    (letrec ((loop (lambda (cond body state)
+  (lambda (cond body st return break continue continuation)
+    (letrec ((loop (lambda (cond body state break continue)
                      (if (Mbool1 cond state)
-                         (loop cond body
-                               (Mst body state))
+                         (Mst body state (lambda (v)
+                                           (continuation (loop cond body v))))
                          state))))
                          (loop cond body st))))
 
