@@ -160,12 +160,13 @@
 (define addst
   (lambda (variable expv st)
     (cond
-      ((in? variable st) (replacest (addst variable expv (car (removest variable st))) (cdr st)))
+      ((in? variable st) (replacest variable expv st))
       (else (cons (list 
              (addtoend variable (operator (car st)))
              (addtoend expv (leftoperand (car st))))
                   (cdr st))))))
 
+; i dont actually ever call removest..
 ; removes variable and corresponding value from state
 ; (removest 'r '(((a b r c) (1 2 3 4))))
 ; (removest 'r '( ((a b)(1 2)) (((c r d)(3 6 4)) (((z) (1))))))
@@ -198,6 +199,7 @@
 ; (replacest 'x '40 '(((y x z r) (2 5 10 20))))
 ; (replacest 'r '9999 '( ((a b)(1 2)) (((c r d)(3 6 4)) (((z) (1))))))
 ; (replacest 'x '999 '(((y z) (2 20)) (((x) (20)))))
+; (replacest 'd '999 '(((y z) (2 20)) (((x) (20))))) ==> error
 ; TODO: rewrite this to replace value in place instead of removing it and adding it blindly
 (define replacest
   (lambda (variable expv st)
@@ -205,7 +207,7 @@
       ((isempty? st) st)
       ((inl? variable (car st))
        (cond
-         ((islayered? st) (list (cons (replacestl variable expv (car st)) (cdr st))))
+         ((islayered? st) (cons (replacestl variable expv (car st)) (cdr st)))
          (else (list (replacestl variable expv (car st))))))
       (else (list (car st) (replacest variable expv (car (cdr st))))))))
 
