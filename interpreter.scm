@@ -100,7 +100,7 @@
   (lambda (exp st)
     (cond
       ((null? exp) st)
-      (else (removelayer (Mstatelist exp (addlayer st)))))))
+      (else (removelayer (Mstatelist (cdr exp) (addlayer st)))))))
             
 
 ; ------------------------------------------<
@@ -169,6 +169,7 @@
 ; removes variable and corresponding value from state
 ; (removest 'r '(((a b r c) (1 2 3 4))))
 ; (removest 'r '( ((a b)(1 2)) (((c r d)(3 6 4)) (((z) (1))))))
+; (removest 'z '( ((a b)(1 2)) (((c r d)(3 6 4)) (((z) (1))))))
 (define removest
   (lambda (variable st)
     (cond
@@ -177,10 +178,12 @@
        (cond
          ((islayered? st) (list (cons (removestl variable (car st)) (cdr st))))
          (else (list (removestl variable (car st))))))
-      (else (cons (car st) (removest variable (car (cdr st))))))))
+      ((islayered? st) (cons (car st) (removest variable (car (cdr st)))))
+      (else (list (car st) (removest variable (car (cdr st))))))))
 
 ; removes variable and corresponding value from layer in state
 ; (removest 'r '((y x f j r u i l) (2 5 9 1 2 3 5 21)))
+; (replacest 'x '20 '(((y z) (2 20)) (((x) (20)))))
 (define removestl
   (lambda (variable st)
     (cond
@@ -194,6 +197,7 @@
 ; add variable and (expression evaluated with current state) into (st that has just removed current 'variable's state)
 ; (replacest 'x '40 '(((y x z r) (2 5 10 20))))
 ; (replacest 'r '9999 '( ((a b)(1 2)) (((c r d)(3 6 4)) (((z) (1))))))
+; (replacest 'x '999 '(((y z) (2 20)) (((x) (20)))))
 ; TODO: rewrite this to replace value in place instead of removing it and adding it blindly
 (define replacest
   (lambda (variable expv st)
@@ -203,7 +207,7 @@
        (cond
          ((islayered? st) (list (cons (replacestl variable expv (car st)) (cdr st))))
          (else (list (replacestl variable expv (car st))))))
-      (else (cons (car st) (replacest variable expv (car (cdr st))))))))
+      (else (list (car st) (replacest variable expv (car (cdr st))))))))
 
 
 ; replaces variable's old value with new value in a layer
