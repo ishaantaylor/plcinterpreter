@@ -146,7 +146,7 @@
 (define addst
   (lambda (variable expv st)
     (cond
-      ((in? variable st) (cons (addst variable expv (car (removest variable st))) (cdr st)))
+      ((in? variable st) (replacest (addst variable expv (car (removest variable st))) (cdr st)))
       (else (cons (list 
              (addtoend variable (operator (car st)))
              (addtoend expv (leftoperand (car st))))
@@ -175,6 +175,38 @@
       (else (list 
              (cons (car (operator st)) (car (removestl variable (cdrcdr st))))
              (cons (car (leftoperand st)) (cadr (removestl variable (cdrcdr st)))))))))
+
+; replace variable's current value with exp maintaining state
+; add variable and (expression evaluated with current state) into (st that has just removed current 'variable's state)
+; (replacest 'x '40 '(((y x z r) (2 5 10 20))))
+; (replacest 'r '9999 '( ((a b)(1 2)) (((c r d)(3 6 4)) (((z) (1))))))
+; TODO: rewrite this to replace value in place instead of removing it and adding it blindly
+(define replacest
+  (lambda (variable expv st)
+    (cond 
+      ((isempty? st) st)
+      ((inl? variable (car st))
+       (cond
+         ((islayered? st) (list (cons (replacestl variable expv (car st)) (cdr st))))
+         (else (list (replacestl variable expv (car st))))))
+      (else (cons (car st) (replacest variable expv (car (cdr st))))))))
+
+
+; replaces variable's old value with new value in a layer
+; (replacestl 'x '40 '((y x z r) (2 5 10 20)))
+; variable => r
+;expv => 9999
+;st => (((c r d) (3 6 4)) (((z) (1))))
+(define replacestl
+  (lambda (variable expv st)
+    (cond 
+      ((null? (operator st)) (newlayer))
+      ((eq? variable (car (operator st))) (list 
+                                           (cons (car (operator st)) (cdr (operator st)))
+                                           (cons expv (cdr (leftoperand st)))))
+      (else (list 
+             (cons (car (operator st)) (car (replacestl variable expv (cdrcdr st))))
+             (cons (car (leftoperand st)) (cadr (replacestl variable expv (cdrcdr st)))))))))
 
 ; valueof wrap returns not #t or #f but true or false when called
 (define valueofwrap
@@ -234,14 +266,6 @@
       ((null? (car env)) #f)    ; (*()* ())
       ((eq? variable (car (operator env))) #t)
       (else (inl? variable (cdrcdr env))))))  ; if first element of (car st) is not the variable, new state is just cons of (trim first element from car and cdr of env)
-
-; replace variable's value with exp
-; add variable and (expression evaluated with current state) into (st that has just removed current 'variable's state)
-; (replacest 'x '(* 4 10) '((y x z r) (2 5 10 20)))
-; TODO: rewrite this to replace value in place instead of removing it and adding it blindly
-(define replacest
-  (lambda (variable expv st)
-    (addst variable expv (removest variable st))))
 
 ; trim the first element off (operator st) and (leftoperand st)
 ; (cdrcdr '(()()))
