@@ -237,26 +237,23 @@
 ; replace variable's current value with exp maintaining state
 ; add variable and (expression evaluated with current state) into (st that has just removed current 'variable's state)
 ; (replacest 'x '40 '(((y x z r) (2 5 10 20))))
-; (replacest 'r '9999 '( ((a b)(1 2)) (((c r d)(3 6 4)) (((z) (1))))))
-; (replacest 'x '999 '(((y z) (2 20)) (((x) (20)))))
-; (replacest 'd '999 '(((y z) (2 20)) (((x) (20))))) ==> error
+; (replacest 'r '9999 '( ((a b)(1 2)) ((c r d)(3 6 4)) ((z) (1))))
+; (replacest 'x '999 '(((y z) (2 20)) ((x) (20)))) ==> error
+; (replacest 'd '999 '(((y z) (2 20)) ((x) (20)))) 
 (define replacest
   (lambda (variable expv st)
     (cond 
       ((isempty? st) st)
-      ((eq? (in? variable st) #f) st)
+      ((not (in? variable st)) st)
       ((inl? variable (car st))
        (cond
          ((islayered? st) (cons (replacestl variable expv (car st)) (cdr st)))
          (else (list (replacestl variable expv (car st))))))
-      (else (list (car st) (replacest variable expv (car (cdr st))))))))
+      (else (cons (car st) (replacest variable expv (cdr st)))))))
 
 
 ; replaces variable's old value with new value in a layer
-; (replacestl 'x '40 (((y x z r) (2 5 10 20)))
-; variable => r
-;expv => 9999
-;st => (((c r d) (3 6 4)) (((z) (1))))
+; (replacestl 'x '40 '((y x z r) (2 5 10 20)))
 (define replacestl
   (lambda (variable expv st)
     (cond 
