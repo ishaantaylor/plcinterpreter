@@ -10,40 +10,47 @@
 ; start feeds the interpreters output to Mst
 (define interpret
   (lambda (name)
-    (call/cc
-     (lambda (return)
-       (Mstatelist (parser name) (newenv) return)))))
+    (formatoutput (call/cc
+                   (lambda (return)
+                     (Mstatelist (parser name) (newenv) return))))))
+
+(define formatoutput
+  (lambda (condition)
+    (cond
+      ((eq? #t condition) 'true)
+      ((eq? #f condition) 'false)
+      (else condition))))
 
 ; main Mstate wrapper
 (define Mstatelist 
   (lambda (exp st return)
     (cond
-      ((null? exp) st); (valueof 'return st))
-      (else (Mstatelist (cdr exp) (Mst (car exp) st return) return)))))
+      ((null? exp) st) 
+      (else (Mstatelist (cdr exp) (Mst (car exp) st return defaultbreak defaultcontinue) return)))))
 
+(define defaultbreak
+  (lambda (b) (error 'No_loop_to_break_from)))
+
+(define defaultcontinue
+  (lambda (c) (error 'No_loop_to_continue)))
 
 ; ------------------------------------------<
 ; M State functions
-;
+; 
 
 ; main Mstate function that directs the rest of the Mstates, called by interpret
 (define Mst
-  (lambda (exp st return)
+  (lambda (exp st return break continue)
     (cond
       ((null? exp)   st)
-      ((not (list? exp))
-       (cond
-         ((eq? 'break exp)    'break)
-         ((eq? 'continue exp) 'continue)
-         ((eq? 'begin exp)    (addlayer st))))
-      ((eq? 'break    (operator exp)) 'break)
-      ((eq? 'continue (operator exp)) 'continue)
+      ((eq? 'break    (operator exp)) (Mst_break    exp st break))
+      ((eq? 'continue (operator exp)) (Mst_continue exp st continue))
       ((eq? 'var      (operator exp)) (Mst_declare  exp st))
       ((eq? '=        (operator exp)) (Mst_assign   exp st))
       ((eq? 'return   (operator exp)) (Mst_return   exp st return))
-      ((eq? 'if       (operator exp)) (Mst_if       exp st return))
-      ((eq? 'begin    (operator exp)) (Mst_begin    exp st return))
-      ((eq? 'while    (operator exp)) (Mst_while    exp st return))
+      ((eq? 'if       (operator exp)) (Mst_if       exp st return break continue))
+      ((eq? 'begin    (operator exp)) (Mst_begin    exp st return break continue))
+      ((eq? 'while    (operator exp)) (Mst_while    exp st return break continue))
       (else (error 'out-of-place-command-identifier-in-code)))))
 
 ; '(var x expression) and '(var x)
@@ -60,24 +67,26 @@
       ((in? (leftoperand exp) st) (error 'redefining))
       ; if right operand is null add left operand to state with undefined
       ((null? (rightoperand exp)) (addst (leftoperand exp) 'undefined st))
-      ; if right operand is not null, add left value to state with (Mvalwrap (rightoperand exp) ... (must be Mvalwrap because dont want to save state as true or false, but #t and #f
-      (else (addst (leftoperand exp) (Mvalwrap (rightoperand exp) st) st)))))
+      ; if right operand is not null, add left value to state with (Mval (rightoperand exp) ... (must be Mval because dont want to save state as true or false, but #t and #f
+      (else (addst (leftoperand exp) (Mval (rightoperand exp) st) st)))))
 
 ; (Mst_assign '(= x 10) '(() ()))
 ; (Mst_assign '(= x 10) '((x) (4)))
 (define Mst_assign
   (lambda (exp st)
     (cond
-      ((in? (leftoperand exp) st) (replacest (leftoperand exp) (Mvalwrap (rightoperand exp) st) st))
+      ((in? (leftoperand exp) st) (replacest (leftoperand exp) (Mval (rightoperand exp) st) st))
       (else (error 'declare-your-variables-before-assigning-it-a-value)))))
 
 ; '(return expression)
 ; create new return variable and put it in state)
-; (Mst_return '(return 10) '(()()))
-; (Mst_return '(return (* 10 x)) '((x) (9)))
+; (Mst_return '((return 10)) '(()()))
+; (Mst_return '((return (* 10 x))) '((x) (9)))
 (define Mst_return
   (lambda (exp st return)
-    (return (Mval (rightoperand exp) st))))
+    (if (null? exp) 
+        state
+        (return (Mval (leftoperand exp) st)))))
 
 ; (Mst_if '(if (>= x y) (= m x) (= m y)) '((x y m) (1 2 0)))
 ; (Mst_if '(if (== x y) (= x 10)) '((x y) (5 6)))
@@ -86,13 +95,13 @@
 (define Mst_if
   (lambda (exp st return)
     (cond
-      ((Mvalwrap (cadr exp) st) (Mst (caddr exp) st))                 ; if cond true
-      ((and (null? (cdddr exp)) (not (Mvalwrap (cadr exp) st))) st)   ; 
+      ((Mval (cadr exp) st) (Mst (caddr exp) st))                 ; if cond true
+      ((and (null? (cdddr exp)) (not (Mval (cadr exp) st))) st)   ; 
       (else (Mst (cadddr exp) st)))))
 
 ; (Mst_while
 (define Mst_while
-  (lambda (exp st return)
+  (lambda (exp st return break continue)
     (while (leftoperand exp) (rightoperand exp) st return)))
 
 (define while
@@ -104,20 +113,27 @@
                               (loop cond body
                                     (call/cc 
                                      (lambda (continue) 
-                                       (cond
-                                         ((eq? 'continue (car body)) (continue state))
-                                         ((eq? 'break    (car body)) (break    state))
-                                         (else (Mst body state))))))
-                              state))))
+                                       (Mst body state return break continue)))))
+                              (break state))))
            (loop c b st))))))
     
 ; (Mst_begin
 (define Mst_begin
-  (lambda (exp st)
+  (lambda (exp st return break continue)
     (cond
       ((null? exp) st)
-      (else (removelayer (Mstatelist (cdr exp) (addlayer st)))))))
-            
+      (else (removelayer (Mstatelist (cdr exp) (addlayer st) return))))))
+
+; (Mst_continue
+(define Mst_continue
+  (lambda (exp st continue)
+    (continue st)))
+
+; (Mst_break
+(define Mst_break
+  (lambda (exp st break)
+    (break st)))
+
 
 ; ------------------------------------------<
 ; Environment
@@ -125,26 +141,19 @@
 
 ; adds a new layer to the state
 ; (addlayer (newenv))
-; (addlayer '((() ()) ((() ()))))
-;    ==> ((() ()) ((() ()) ((() ()))))
-; (addlayer '((() ()) ((() ()) ((() ())))))
-;    ==> ((() ()) ((() ()) ((() ()) ((() ())))))
-; (addlayer '((() ()) ((() ()) ((() ()) ((() ()))))))
-; (addlayer '(( (x)(1) ) (((y)(2)) (((z)(3))))))
+; (addlayer '((() ()) (() ())))
+;    ==> ((() ()) (() ()) (() ()))
 (define addlayer
   (lambda (st)
-    (cons (newlayer) (list st))))
+    (cons (newlayer) st)))
 
 ; removes most recently added layer in state
 ; will only ever be called on multiple layers
-; (removelayer '(((y) (2)) (((z) (3)))))
-; (removelayer '(( (x)(1) ) (((y)(2)) (((z)(3)) ))))
+; (removelayer '(((y) (2)) ((z) (3))))
+; (removelayer '(((x)(1)) ((y)(2)) ((z)(3)) ))
 (define removelayer
   (lambda (st)
-    (cond
-      ((or (isempty? st)
-           (not (islayered? st))) st)      ; remove layers only up to '((()())) or singly layered
-      (else (car (cons (car (cdr st)) (cdr (cdr st))))))))
+    (cdr st)))
                    
 ; asks if the state is empty
 ; (isempty? '((()())))
@@ -153,13 +162,13 @@
   (lambda (st)
     (cond
       ((null? st) #t)
-      ((list? (car st)) (and (isempty? (car st)) (isempty? (cdr st))))
+      ((and (list? st) (list? (car st))) (and (isempty? (car st)) (isempty? (cdr st))))
       (else #f))))
 
 ; asks if the state has been layered
 ; (islayered? '(()()))
-; (islayered? '(( ()() ))
-; (islayered? '((()()) ((()()) ((()())))))
+; (islayered? '(( ()() )))
+; (islayered? '((()()) (()()) (()())) )
 (define islayered?
   (lambda (st)
     (cond
@@ -167,6 +176,21 @@
       ((not (null? (cdr st))) (not (null? (cadr st))))          ; single 'layer' (#f)
       (else #t))))
 
+; asks if the environment passed in is a layer. if its a new environment, or layered environment, then #f
+; only ever called with either '(()()) or '((()()))
+(define islayer?
+  (lambda (env)
+    (cond
+      ((eq? (length env) 1) #f)
+      (else #t))))
+
+; length of list (number of elements in the list
+;(define length
+;  (lambda (l)
+;    (cond
+;      ((null? l) 0)
+;      (else (+ 1 (length (cdr l)))))))
+      
 
 ; adds variable and value to [current scope] :: ((car (car st)) (cadr (car st))) :: (((variables) (values)) (lower level states))
 ; replaces variable if state already exists
@@ -216,11 +240,11 @@
 ; (replacest 'r '9999 '( ((a b)(1 2)) (((c r d)(3 6 4)) (((z) (1))))))
 ; (replacest 'x '999 '(((y z) (2 20)) (((x) (20)))))
 ; (replacest 'd '999 '(((y z) (2 20)) (((x) (20))))) ==> error
-; TODO: rewrite this to replace value in place instead of removing it and adding it blindly
 (define replacest
   (lambda (variable expv st)
     (cond 
       ((isempty? st) st)
+      ((eq? (in? variable st) #f) st)
       ((inl? variable (car st))
        (cond
          ((islayered? st) (cons (replacestl variable expv (car st)) (cdr st)))
@@ -229,14 +253,14 @@
 
 
 ; replaces variable's old value with new value in a layer
-; (replacestl 'x '40 '((y x z r) (2 5 10 20)))
+; (replacestl 'x '40 (((y x z r) (2 5 10 20)))
 ; variable => r
 ;expv => 9999
 ;st => (((c r d) (3 6 4)) (((z) (1))))
 (define replacestl
   (lambda (variable expv st)
     (cond 
-      ((null? (operator st)) (newlayer))
+      ((null? (operator st)) (newenv))
       ((eq? variable (car (operator st))) (list 
                                            (cons (car (operator st)) (cdr (operator st)))
                                            (cons expv (cdr (leftoperand st)))))
@@ -244,27 +268,18 @@
              (cons (car (operator st)) (car (replacestl variable expv (cdrcdr st))))
              (cons (car (leftoperand st)) (cadr (replacestl variable expv (cdrcdr st)))))))))
 
-; valueof wrap returns not #t or #f but true or false when called
-(define valueofwrap
-  (lambda (variable env)
-    (cond
-      ; if (and (variable is return) (return value is boolean)) return Mval of the variable (Mval returns true or false, not #t or #f
-      ((and 
-       (eq? variable 'return)
-       (or (eq? (valueof 'return env) #t) 
-        (eq? (valueof 'return env) #f))) (Mval 'return env))
-      (else (valueof variable env)))))
       
 ; returns the value of a variable thats in the state
 ; (valueof 'r '(((y x f j r u i l) (2 5 9 1 2 3 5 21))))
-; (valueof 'r '( ((a b)(1 2)) (((c r d)(3 6 4)) (((z) (1))))))
+; (valueof 'r '( ((a b)(1 2)) ((c r d)(3 6 4)) ((z) (1)) ) )
 (define valueof
   (lambda (var env)
     (cond 
       ((isempty? (operator (car env))) #f)      ; hopefully will never be called
+      ((null? (cdr env)) (valueofl var (car env)))  ; last layer        
       ((inl? var (car env)) (valueofl var (car env)))
-      ((islayered? env) (valueof var (car (cdr env))))
-      (else #f))))
+      ((islayered? env) (valueof var (cdr env)))    ; layered and not in first layer, then check other layers
+      (else (valueofl var (car env))))))            ; last layer
 
 ; returns the value of a variable thats in the first layer
 ; (valueofl 'r '((y x f j r u i l) (2 5 9 1 2 3 5 21)))
@@ -272,12 +287,14 @@
   (lambda (variable env)
     (cond
       ((isempty? (operator env)) #f)      ; hopefully will never be called
+      ((and (not (islayer? env)) (eq? variable (car (operator env)))) (car (leftoperand env))) ; safety check. shouldn't ever go through but if it does o wel
       ((eq? variable (car (operator env))) (car (leftoperand env)))
-      (else (valueofl variable (cdrcdr env))))))
+      ((islayer? env) (valueofl variable (cdrcdr env)))
+      (else #f))))
       
 ; is the variable present in env? has it been declared? (use env when not modifying state) 
 ; (in? 'x '(((y x z) (1 2 3))))
-; (in? 'x '(()()))
+; (in? 'x '((()())))
 ; (in? 'x '(((x)(1))))
 ; (in? 'x '(((y)(1))))
 ; (in? 'x '((()())))
@@ -285,24 +302,15 @@
 ; (in? 'x '((()()) ((()()) ((()())))))
 (define in?
   (lambda (variable env)
-    (cond
-      ((void? env) #f)
-      ((isempty? env) #f)
-      ;((null? (car env)) #f)
-      ((null? (cdr env)) (inl? variable (car env)))
-      ((not (islayered? env)) (inl? variable (car env)))
-      (else (or (inl? variable (car env)) (in? variable (car (cdr env))))))))
+    (not (eq? (valueof variable env) #f))))
 
 ; is the variable present in a layer in the environment?
 ; (inl? 'x '((a b x)(1 4 2)))
 ; (inl? 'x '(()()))
 (define inl?
   (lambda (variable env)
-    (cond
-      ((null? (car env)) #f)    ; (*()* ())
-      ((eq? variable (car (operator env))) #t)
-      (else (inl? variable (cdrcdr env))))))  ; if first element of (car st) is not the variable, new state is just cons of (trim first element from car and cdr of env)
-
+    (not (eq? (valueofl variable env) #f))))
+      
 ; trim the first element off (operator st) and (leftoperand st)
 ; (cdrcdr '(()()))
 ; (cdrcdr '((1 2 3) (4 5 6)))
@@ -333,22 +341,7 @@
 ; M Value
 ;
 
-; wrapper for true and false
-(define Mval 
-  (lambda (exp st)
-    (cond
-      ((eq? (Mvalwrap exp st) #t) 'true)
-      ((eq? (Mvalwrap exp st) #f) 'false)
-      (else (Mvalwrap exp st)))))
-
-; M_value takes an expression, a state and returns its evaluation (#t, #f)
-; (Mval '(+ 1 (* 5 x)) '((x) (10)))
-
-; TODO: figure out why this error is happening
-;      (Mst_assign '(= z x) '(((x y z)(#t #f undefined))))
-
-
-(define Mvalwrap
+(define Mval
   (lambda (exp state)
     (cond
       ((number? exp) exp)                     ; expression is number
@@ -362,18 +355,17 @@
       ((in? exp state) (valueof exp state))   ; expression is variable in state and defined
       
       ((and                       ; expression is not in state ^
-        (not (void? state))
         (not (list? exp))         ; not a complex expression
         (not (number? exp))       ; not a number
         (atom? exp)               ; is an atom
         (not (in? exp state)))     
        (error 'make-sure-your-variables-are-declared))
        
-      ((eq? '+ (operator exp)) (+ (Mvalwrap (leftoperand exp) state) (Mvalwrap (rightoperand exp) state)))
-      ((eq? '/ (operator exp)) (quotient (Mvalwrap (leftoperand exp) state) (Mvalwrap (rightoperand exp) state)))
-      ((eq? '% (operator exp)) (remainder (Mvalwrap (leftoperand exp) state) (Mvalwrap (rightoperand exp) state)))
+      ((eq? '+ (operator exp)) (+ (Mval (leftoperand exp) state) (Mval (rightoperand exp) state)))
+      ((eq? '/ (operator exp)) (quotient (Mval (leftoperand exp) state) (Mval (rightoperand exp) state)))
+      ((eq? '% (operator exp)) (remainder (Mval (leftoperand exp) state) (Mval (rightoperand exp) state)))
       ((eq? '- (operator exp)) (Mval_unary_neg exp state))
-      ((eq? '* (operator exp)) (* (Mvalwrap (leftoperand exp) state) (Mvalwrap (rightoperand exp) state)))
+      ((eq? '* (operator exp)) (* (Mval (leftoperand exp) state) (Mval (rightoperand exp) state)))
       
       (else (Mbool1 exp state)))))
 
@@ -397,20 +389,20 @@
     (cond
       ((eq? exp 'true) #t)
       ((eq? exp 'false) #f)
-      ((number? exp) (Mvalwrap exp st))
+      ((number? exp) (Mval exp st))
       ((in? exp st) (valueof exp st))
 
       ((eq? '&& (operator exp)) (and (Mbool1 (leftoperand exp) st) (Mbool1 (rightoperand exp) st)))
       ((eq? '|| (operator exp)) (or (Mbool1 (leftoperand exp) st) (Mbool1 (rightoperand exp) st)))
       ((eq? '!  (operator exp)) (not (Mbool1 (leftoperand exp) st)))
       
-      ((eq? '== (operator exp)) (eq? (Mvalwrap (leftoperand exp) st) (Mvalwrap (rightoperand exp) st)))
-      ((eq? '!= (operator exp)) (not (eq? (Mvalwrap (leftoperand exp) st) (Mvalwrap (rightoperand exp) st))))
+      ((eq? '== (operator exp)) (eq? (Mval (leftoperand exp) st) (Mval (rightoperand exp) st)))
+      ((eq? '!= (operator exp)) (not (eq? (Mval (leftoperand exp) st) (Mval (rightoperand exp) st))))
       
-      ((eq? '<  (operator exp)) (< (Mvalwrap (leftoperand exp) st) (Mvalwrap (rightoperand exp) st)))
-      ((eq? '>  (operator exp)) (> (Mvalwrap (leftoperand exp) st) (Mvalwrap (rightoperand exp) st)))
-      ((eq? '>= (operator exp)) (>= (Mvalwrap (leftoperand exp) st) (Mvalwrap (rightoperand exp) st)))
-      ((eq? '<= (operator exp)) (<= (Mvalwrap (leftoperand exp) st) (Mvalwrap (rightoperand exp) st)))
+      ((eq? '<  (operator exp)) (< (Mval (leftoperand exp) st) (Mval (rightoperand exp) st)))
+      ((eq? '>  (operator exp)) (> (Mval (leftoperand exp) st) (Mval (rightoperand exp) st)))
+      ((eq? '>= (operator exp)) (>= (Mval (leftoperand exp) st) (Mval (rightoperand exp) st)))
+      ((eq? '<= (operator exp)) (<= (Mval (leftoperand exp) st) (Mval (rightoperand exp) st)))
       
       (else (error 'bad-operator)))))
 
