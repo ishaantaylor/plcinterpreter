@@ -1,11 +1,10 @@
 (load "simpleParser.scm")
 
 ; test
-;(define testvalid
-;  (lambda ()
-;    (list 
-;     (interpret "1.txt") (interpret "2.txt") (interpret "3.txt") (interpret "4.txt") (interpret "5.txt") (interpret "6.txt") (interpret "7.txt") (interpret "8.txt") (interpret "9.txt") (interpret "10.txt")
-;     (interpret "11.txt") (interpret "12.txt"))))    
+(define testvalid
+  (lambda ()
+    (list 
+     (interpret "1.txt") (interpret "2.txt") (interpret "3.txt") (interpret "4.txt") (interpret "5.txt") (interpret "6.txt") (interpret "7.txt") (interpret "11.txt") (interpret "12.txt"))))    
 
 ; start feeds the interpreters output to Mst
 (define interpret
@@ -38,7 +37,7 @@
 ; M State functions
 ; 
 
-; main Mstate function that directs the rest of the Mstates, called by interpret
+; main Mstate ƒunction that directs the rest of the Mstates, called by interpret
 (define Mst
   (lambda (exp st return break continue)
     (cond
@@ -55,11 +54,6 @@
 
 ; '(var x expression) and '(var x)
 ; Declare variable (place in state with corresponding value), if doesn't have value then 'undefined
-; (Mst_declare '(var x) '((x) (10)))
-; (Mst_declare '(var x) '(()()))
-; (Mst_declare '(var x 10) '(()()))
-; (Mst_declare '(var x (* 2 10)) '(()()))
-; (Mst_declare '(var x (* x 20)) '((x)(10)))
 (define Mst_declare
   (lambda (exp st)
     (cond
@@ -70,8 +64,7 @@
       ; if right operand is not null, add left value to state with (Mval (rightoperand exp) ... (must be Mval because dont want to save state as true or false, but #t and #f
       (else (addst (leftoperand exp) (Mval (rightoperand exp) st) st)))))
 
-; (Mst_assign '(= x 10) '(() ()))
-; (Mst_assign '(= x 10) '((x) (4)))
+; Assign a value to an existing variable (throw error if doesn't exist)
 (define Mst_assign
   (lambda (exp st)
     (cond
@@ -80,16 +73,12 @@
 
 ; '(return expression)
 ; create new return variable and put it in state)
-; (Mst_return '((return 10)) '(()()))
-; (Mst_return '((return (* 10 x))) '((x) (9)))
 (define Mst_return
   (lambda (exp st return)
     (if (null? exp) 
         state
         (return (Mval (leftoperand exp) st)))))
 
-; (Mst_if '(if (>= x y) (= m x) (= m y)) '((x y m) (1 2 0)))
-; (Mst_if '(if (== x y) (= x 10)) '((x y) (5 6)))
 ; (Mst_if '(if (|| (! z) false) (= z (! z)) (= z z)) '((x y z) (10 20 true))
 ; cadr = condition, caddr = statement1, cadddr = statement2
 (define Mst_if
@@ -131,6 +120,32 @@
   (lambda (st continue)
     (continue st)))
 
+; Mst_funclosure
+(define Mst_funclosure
+  (lambda (syntax st return break continue)
+    (if (in? (leftoperand syntax) st)
+        (error 'cannot-declare-function-more-than-once)
+        (addst (leftoperand syntax) (makeclosure syntax st) st))))
+  
+; helper ƒunction to make closure
+(define makeclosure
+  (lambda (function st)
+    (list
+     (rightoperand function)
+     (funbody function)
+     (mktrimmer (length st)))))
+
+; makes a ƒunction that takes the current calling environment returns the environment the function is declared in
+(define mktrimmer
+  (lambda (n)
+    ((lambda (m)
+       (m m))
+     (lambda (trim)
+       (lambda (env)
+         (cond
+           ((eq? n (length env)) env)
+           (else ((trim trim) (cdr env)))))))))
+  
 
 ; ------------------------------------------<
 ; Environment
@@ -429,3 +444,4 @@
     (cond
       ((null? (cddr exp)) '())      ; unary
       (else (car (cddr exp))))))
+(define funbody cadddr)
