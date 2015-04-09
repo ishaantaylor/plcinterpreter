@@ -12,7 +12,7 @@
   (lambda (name)
     (formatoutput (call/cc
                    (lambda (return)
-                     (Mstatelist (parser name) (newenv) return))))))
+                     (Mstatelist (parser name) (newenv) return (lambda (b) b) (lambda (c) c)))))))
 
 (define formatoutput
   (lambda (condition)
@@ -23,16 +23,16 @@
 
 ; main Mstate wrapper
 (define Mstatelist 
-  (lambda (exp st return)
+  (lambda (exp st return continue break)
     (cond
       ((null? exp) st) 
-      (else (Mstatelist (cdr exp) (Mst (car exp) st return defaultbreak defaultcontinue) return)))))
+      (else (Mstatelist (cdr exp) (Mst (car exp) st return break continue) return break continue)))))
 
 (define defaultbreak
-  (lambda (b) (error 'No_loop_to_break_from)))
+  (lambda (b) b))
 
 (define defaultcontinue
-  (lambda (c) (error 'No_loop_to_continue)))
+  (lambda (c) c))
 
 ; ------------------------------------------<
 ; M State functions
@@ -43,8 +43,8 @@
   (lambda (exp st return break continue)
     (cond
       ((null? exp)   st)
-      ((eq? 'break    (operator exp)) (Mst_break    exp st break))
-      ((eq? 'continue (operator exp)) (Mst_continue exp st continue))
+      ((eq? 'break    (operator exp)) (Mst_break    st break))
+      ((eq? 'continue (operator exp)) (Mst_continue st continue))
       ((eq? 'var      (operator exp)) (Mst_declare  exp st))
       ((eq? '=        (operator exp)) (Mst_assign   exp st))
       ((eq? 'return   (operator exp)) (Mst_return   exp st return))
@@ -93,11 +93,11 @@
 ; (Mst_if '(if (|| (! z) false) (= z (! z)) (= z z)) '((x y z) (10 20 true))
 ; cadr = condition, caddr = statement1, cadddr = statement2
 (define Mst_if
-  (lambda (exp st return)
+  (lambda (exp st return break continue)
     (cond
-      ((Mval (cadr exp) st) (Mst (caddr exp) st))                 ; if cond true
+      ((Mval (cadr exp) st) (Mst (caddr exp) st return break continue))                 ; if cond true
       ((and (null? (cdddr exp)) (not (Mval (cadr exp) st))) st)   ; 
-      (else (Mst (cadddr exp) st)))))
+      (else (Mst (cadddr exp) st return break continue)))))
 
 ; (Mst_while
 (define Mst_while
@@ -106,33 +106,30 @@
 
 (define while
   (lambda (c b st return)
-      (call/cc
-       (lambda (break)
-         (letrec ((loop (lambda (cond body state)
-                          (if (Mbool1 cond state)
-                              (loop cond body
-                                    (call/cc 
-                                     (lambda (continue) 
-                                       (Mst body state return break continue)))))
-                              (break state))))
-           (loop c b st))))))
-    
+    (call/cc (lambda (break)
+               (letrec ((loop (lambda (cond body state)
+                                (if (Mbool1 cond state)
+                                    (loop cond body (call/cc (lambda (continue) 
+                                                     (Mst body state return break continue))))
+                                state))))
+               (loop c b st))))))
+
 ; (Mst_begin
 (define Mst_begin
   (lambda (exp st return break continue)
     (cond
       ((null? exp) st)
-      (else (removelayer (Mstatelist (cdr exp) (addlayer st) return))))))
-
-; (Mst_continue
-(define Mst_continue
-  (lambda (exp st continue)
-    (continue st)))
+      (else (removelayer (Mstatelist (cdr exp) (addlayer st) return (lambda (v) (break (removelayer v))) (lambda (v) (continue (removelayer v)))))))))
 
 ; (Mst_break
 (define Mst_break
-  (lambda (exp st break)
+  (lambda (st break)
     (break st)))
+
+; (Mst_continue
+(define Mst_continue
+  (lambda (st continue)
+    (continue st)))
 
 
 ; ------------------------------------------<
@@ -157,11 +154,14 @@
                    
 ; asks if the state is empty
 ; (isempty? '((()())))
-; (isempty? '( ((x)(1)) (((y)(2)) (((z)(3)) ))))
+; (isempty? '((() ()) ((x) (0))))
+; (isempty? '( ((x)(1)) ((y)(2)) ((z)(3)) ))
+; (isempty? '((() ()) ((x) (0))))
 (define isempty?
   (lambda (st)
     (cond
       ((null? st) #t)
+      ((>= (length st) 1) #f)
       ((and (list? st) (list? (car st))) (and (isempty? (car st)) (isempty? (cdr st))))
       (else #f))))
 
@@ -272,7 +272,7 @@
 (define valueof
   (lambda (var env)
     (cond 
-      ((isempty? (operator (car env))) #f)      ; hopefully will never be called
+      ((isempty? env) #f)      ; hopefully will never be called
       ((null? (cdr env)) (valueofl var (car env)))  ; last layer        
       ((inl? var (car env)) (valueofl var (car env)))
       ((islayered? env) (valueof var (cdr env)))    ; layered and not in first layer, then check other layers
@@ -295,7 +295,7 @@
 ; (in? 'x '(((x)(1))))
 ; (in? 'x '(((y)(1))))
 ; (in? 'x '((()())))
-; (in? 'x '(   ((a b)(1 2))  ( ((z)(1))   (((y)(2))   (((x)(1)))))))
+; (in? 'x '(   ((a b)(1 2)) ((z)(1)) ((y)(2))  ((x)(1))))
 ; (in? 'x '((()()) ((()()) ((()())))))
 (define in?
   (lambda (variable env)
