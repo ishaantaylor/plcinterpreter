@@ -2,7 +2,7 @@
 Interpreter for a Java/C like language written in a common Lisp dialect, Scheme.
 
 ##How to use:
-1. Clone repository and 'run' `interpreter.rkt`.
+1. Clone repository and 'run' `interpreter.scm`.
 
 2. Each branch has a different interpreter:
   ####`dev`
