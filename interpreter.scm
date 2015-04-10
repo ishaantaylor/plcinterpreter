@@ -24,23 +24,22 @@
 ; 'outer' interpret
 (define interpret
   (lambda (name)
-    (innerinterpret (body (closure 'main (Mstatelistglobal (parser name) (newenv))))
-                (Mstatelistglobal (parser name) (newenv)))))
+    (Mv_funcall_main (get-main (parser name)) (Mstatelistglobal (parser name) (newenv)))))
 
-; called each time function is called to interpret the function body, therefore need to add layer here
+; called each time function is called to interpret the function body
 (define innerinterpret
-  (lambda (exp st)
+  (lambda (exp st vore)
     (call/cc
      (lambda (return)
-       (Mstatelist exp st return (lambda (b) b) (lambda (c) c))))))
+       (Mstatelist exp (addlayer st) return (lambda (b) b) (lambda (c) c))))))
 
 (define callmain
   (lambda (exp st)
     (cond
       ((null? exp) (error 'no-main-function))
-      ((eq? 'main  (leftoperand (car exp))) (formatoutput (Mst_funcall     
+      ((eq? 'main  (leftoperand (car exp))) (formatoutput (Mvalfunc     
                                                      (car exp)
-                                                     st)))
+                                                     (newlayer st))))
       (else (callmain (cdr exp) st)))))
     
 (define formatoutput
@@ -54,8 +53,7 @@
 (define Mstatelist 
   (lambda (exp st return break continue)
     (cond
-      ((null? exp) st) 
-      ((list? (Mst (car exp) st return break continue)) (Mstatelist (cdr exp) (Mst (car exp) st return break continue) return break continue))
+      ((null? exp) st)
       (else (Mstatelist (cdr exp) (Mst (car exp) st return break continue) return break continue)))))
 
 ;;; global Mstatelist
@@ -69,6 +67,16 @@
 (define functionbody
   (lambda (syntax)
     (cadddr (car syntax))))
+;reconstruct function from closure
+(define get-main
+  (lambda (parsetree)
+    (cond
+      ((null? parsetree) (error 'no-main-function))
+      ((eq? (operator (car parsetree)) 'function) (if (eq? (cadr (car parsetree)) 'main)
+                                                      (car parsetree)
+                                                      (get-main (cdr parsetree))))
+      (else (get-main (cdr parsetree))))))
+    
     
 (define defaultbreak
   (lambda (b) b))
@@ -90,7 +98,7 @@
       ((eq? 'continue (operator exp)) (Mst_continue    st continue))
       ((eq? 'var      (operator exp)) (Mst_declare     exp st))
       ((eq? '=        (operator exp)) (Mst_assign      exp st))
-      ((eq? 'return   (operator exp)) (Mst_return      exp st return))
+      ((eq? 'return   (operator exp)) (Mv_return       exp st return))
       ((eq? 'if       (operator exp)) (Mst_if          exp st return break continue))
       ((eq? 'begin    (operator exp)) (Mst_begin       exp st return break continue))
       ((eq? 'while    (operator exp)) (Mst_while       exp st return break continue))
@@ -98,18 +106,30 @@
       ((eq? 'funcall  (operator exp)) (Mst_funcall     exp st))
       (else (error    'out-of-place-command-identifier-in-code)))))
 
+; removes return for statement function
+(define remove-return
+  (lambda (exp)
+    (list (caar exp) (cadar exp) (caddar exp) (rem-ret (car (cdddr (car exp)))))))
+(define rem-ret
+  (lambda (exp)
+    (cond
+      ((null? exp) '())
+      ((eq? (caar exp) 'return) (rem-ret (cdr exp)))
+      (else (cons (car exp) (rem-ret (cdr exp)))))))
 
+; Mst for globals
 (define Mstg
   (lambda (exp st)
     (cond
       ((null? exp)    st)
       ((eq? 'var      (operator exp)) (Mst_declare     exp st))
       ((eq? 'function (operator exp)) (Mst_funclosure  exp st))
-      ((eq? 'funcall  (operator exp)) (Mst_funcall     exp st))
-      ; next lines dont ever get called 
-      ((eq? 'main  (leftoperand exp)) (formatoutput (Mst_funcall     
+      ((eq? 'main  (leftoperand exp)) (formatoutput (Mvalfunc     
                                        exp
                                        st)))
+      ((eq? 'funcall  (operator exp)) (Mst_funcall     exp st))
+      ; next lines dont ever get called 
+      
       (else (error    'only-global-variables-and-functions-allowed)))))
 
 
@@ -136,8 +156,15 @@
 (define Mst_return
   (lambda (exp st return)
     (if (null? exp) 
-        state
+        st
+        (return (removelayer (Mst exp st return (lambda (b) b) (lambda (c) c)))))))
+
+(define Mv_return
+  (lambda (exp st return)
+    (if (null? exp)
+        st
         (return (Mvalfunc (leftoperand exp) st)))))
+        
 
 ; (Mst_if '(if (|| (! z) false) (= z (! z)) (= z z)) '((x y z) (10 20 true))
 ; cadr = condition, caddr = statement1, cadddr = statement2
@@ -214,13 +241,44 @@
 (define Mst_funcall
   (lambda (syntax st)
     (innerinterpret (body (closure (cadr syntax) st))          ; syntax should include funcall statement
-                 (checkformaltoactualparameters 
-                  (parameters (closure (cadr syntax) st))      ; formal parameters
-                  (cddr syntax)                                ; actual parameters
-                  st                                           ; current state
-                  (trimfunc (closure (cadr syntax) st)))       ; trim function with current state 'remembered'
-                 )))
-                
+                    (checkformaltoactualparameters 
+                     (parameters (closure (cadr syntax) st))      ; formal parameters
+                     (cddr syntax)                               ; actual parameters
+                     st                                           ; current state with new layer
+                     (trimfunc (closure (cadr syntax) st)))       ; trim function with current state 'remembered'
+                    'expression
+                    )))
+
+; Mv_funcall, only main should call
+(define Mv_funcall
+  (lambda (syntax st)
+    (innerinterpret (body (closure (cadr syntax) st))          ; syntax should include funcall statement
+                    (checkformaltoactualparameters 
+                     (parameters (closure (cadr syntax) st))      ; formal parameters
+                     (if (hasbody syntax)
+                         (caddr syntax)      
+                         (cddr  syntax))                           ; actual parameters
+                     st                                           ; current state with new layer
+                     (trimfunc (closure (cadr syntax) st)))       ; trim function with current state 'remembered'
+                    'value
+                    )))
+
+; Mv_funcall_main
+(define Mv_funcall_main
+  (lambda (syntax st)
+    (innerinterpret (body (closure (cadr syntax) st))
+                    (addlayer st)
+                    'value)))
+                    
+       
+(define hasbody
+  (lambda (syntax)
+    (has-sublists syntax)))
+(define has-sublists
+  (lambda (syntax)
+    (cond
+      ((null? syntax) #f)
+      (else (has-sublists (cdr syntax))))))
 ; helpers for Mst_funcall
 (define closure
   (lambda (functionname st)
@@ -486,7 +544,7 @@
       ((isbool? exp) exp)
       
       ;;; only call operator or Mst_funcall if its a list..
-      ((and (list? exp) (eq? 'funcall (operator exp))) (Mst_funcall exp state))
+      ((and (list? exp) (eq? 'funcall (operator exp))) (Mv_funcall exp state))
       (else (Mval exp state)))))
       
 
@@ -542,7 +600,7 @@
       ((in? exp st) (valueof exp st))
       
       ;;; only call operator or Mst_funcall if its a list..
-      ((and (list? exp) (eq? 'funcall (operator exp))) (Mst_funcall exp st))
+      ((and (list? exp) (eq? 'funcall (operator exp))) (Mv_funcall exp st))
 
       ((eq? '&& (operator exp)) (and (Mbool1 (leftoperand exp) st) (Mbool1 (rightoperand exp) st)))
       ((eq? '|| (operator exp)) (or (Mbool1 (leftoperand exp) st) (Mbool1 (rightoperand exp) st)))
