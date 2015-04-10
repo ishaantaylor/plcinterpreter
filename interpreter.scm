@@ -55,6 +55,7 @@
   (lambda (exp st return break continue)
     (cond
       ((null? exp) st) 
+      ((list? (Mst (car exp) st return break continue)) (Mstatelist (cdr exp) (Mst (car exp) st return break continue) return break continue))
       (else (Mstatelist (cdr exp) (Mst (car exp) st return break continue) return break continue)))))
 
 ;;; global Mstatelist
@@ -93,7 +94,7 @@
       ((eq? 'if       (operator exp)) (Mst_if          exp st return break continue))
       ((eq? 'begin    (operator exp)) (Mst_begin       exp st return break continue))
       ((eq? 'while    (operator exp)) (Mst_while       exp st return break continue))
-      ((eq? 'function (operator exp)) (Mst_funclosure  exp st return break continue))
+      ((eq? 'function (operator exp)) (Mst_funclosure  exp st))
       ((eq? 'funcall  (operator exp)) (Mst_funcall     exp st))
       (else (error    'out-of-place-command-identifier-in-code)))))
 
@@ -132,7 +133,6 @@
       (else (error 'declare-your-variables-before-assigning-it-a-value)))))
 
 ; '(return expression)
-; create new return variable and put it in state)
 (define Mst_return
   (lambda (exp st return)
     (if (null? exp) 
@@ -251,8 +251,10 @@
   (lambda (parameters st)
     (cond
       ((null? parameters) #t)
-      ((list? (car parameters)) #t)    ;; pass through for now... not sure if this is right. 
-      ((number? (car parameters)) #t)
+      ((list? (car parameters)) (allinst? (cdr parameters) st))    ;; pass through for now... not sure if this is right. 
+      ((number? (car parameters)) (allinst? (cdr parameters) st))
+      ((eq? (car parameters) 'true) (allinst? (cdr parameters) st))
+      ((eq? (car parameters) 'false) (allinst? (cdr parameters) st))
       ((in? (car parameters) st) (allinst? (cdr parameters) st))
       (else #f))))
 
@@ -481,7 +483,7 @@
     (cond
       ;;; error checking
       ((number? exp) exp)                     ; expression is number
-      
+      ((isbool? exp) exp)
       
       ;;; only call operator or Mst_funcall if its a list..
       ((and (list? exp) (eq? 'funcall (operator exp))) (Mst_funcall exp state))
@@ -502,12 +504,15 @@
       ((in? exp state) (valueof exp state))   ; expression is variable in state and defined
       
       ((and                       ; expression is not in state ^
+        (not (isbool? exp))       ; not a bool value
         (not (list? exp))         ; not a complex expression
         (not (number? exp))       ; not a number
         (atom? exp)               ; is an atom
         (not (in? exp state)))     
        (error 'make-sure-your-variables-are-declared))
       ;;; ...
+      
+      ((isbool? exp) (Mbool1 exp state))
       
       ((eq? '+ (operator exp)) (+ (Mvalfunc (leftoperand exp) state) (Mvalfunc (rightoperand exp) state)))
       ((eq? '/ (operator exp)) (quotient (Mvalfunc (leftoperand exp) state) (Mvalfunc (rightoperand exp) state)))
@@ -530,24 +535,32 @@
 (define Mbool1
   (lambda (exp st)
     (cond
+      
       ((eq? exp 'true) #t)
       ((eq? exp 'false) #f)
       ((number? exp) (Mval exp st))
       ((in? exp st) (valueof exp st))
+      
+      ;;; only call operator or Mst_funcall if its a list..
+      ((and (list? exp) (eq? 'funcall (operator exp))) (Mst_funcall exp st))
 
       ((eq? '&& (operator exp)) (and (Mbool1 (leftoperand exp) st) (Mbool1 (rightoperand exp) st)))
       ((eq? '|| (operator exp)) (or (Mbool1 (leftoperand exp) st) (Mbool1 (rightoperand exp) st)))
       ((eq? '!  (operator exp)) (not (Mbool1 (leftoperand exp) st)))
       
-      ((eq? '== (operator exp)) (eq? (Mval (leftoperand exp) st) (Mval (rightoperand exp) st)))
-      ((eq? '!= (operator exp)) (not (eq? (Mval (leftoperand exp) st) (Mval (rightoperand exp) st))))
+      ((eq? '== (operator exp)) (eq? (Mvalfunc (leftoperand exp) st) (Mvalfunc (rightoperand exp) st)))
+      ((eq? '!= (operator exp)) (not (eq? (Mvalfunc (leftoperand exp) st) (Mvalfunc (rightoperand exp) st))))
       
-      ((eq? '<  (operator exp)) (< (Mval (leftoperand exp) st) (Mval (rightoperand exp) st)))
-      ((eq? '>  (operator exp)) (> (Mval (leftoperand exp) st) (Mval (rightoperand exp) st)))
-      ((eq? '>= (operator exp)) (>= (Mval (leftoperand exp) st) (Mval (rightoperand exp) st)))
-      ((eq? '<= (operator exp)) (<= (Mval (leftoperand exp) st) (Mval (rightoperand exp) st)))
+      ((eq? '<  (operator exp)) (< (Mvalfunc (leftoperand exp) st) (Mvalfunc (rightoperand exp) st)))
+      ((eq? '>  (operator exp)) (> (Mvalfunc (leftoperand exp) st) (Mvalfunc (rightoperand exp) st)))
+      ((eq? '>= (operator exp)) (>= (Mvalfunc (leftoperand exp) st) (Mvalfunc (rightoperand exp) st)))
+      ((eq? '<= (operator exp)) (<= (Mvalfunc (leftoperand exp) st) (Mvalfunc (rightoperand exp) st)))
       
       (else (error 'bad-operator)))))
+
+(define isbool?
+  (lambda (exp)
+    (or (eq? 'true exp) (eq? 'false exp) (eq? exp #t) (eq? exp #f))))
 
 
 ; ------------------------------------------<
