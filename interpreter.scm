@@ -1,18 +1,48 @@
-(load "simpleParser.scm")
+(load "functionParser.scm")
+;(load "simpleParser.scm")
+
 
 ; test
 (define testvalid
   (lambda ()
-    (list 
-     (interpret "1.txt") (interpret "2.txt") (interpret "3.txt") (interpret "4.txt") (interpret "5.txt") (interpret "6.txt") (interpret "7.txt") (interpret "11.txt") (interpret "12.txt"))))    
+    (list
+     (interpret "1.txt") (interpret "2.txt") (interpret "3.txt") (interpret "4.txt") (interpret "5.txt") (interpret "6.txt") (interpret "7.txt") (interpret "8.txt") (interpret "9.txt") (interpret "10.txt")
+     (interpret "11.txt") (interpret "13.txt") (interpret "14.txt") (interpret "15.txt") (interpret "16.txt"))))
 
-; start feeds the interpreters output to Mst
+(define testvalid2
+  (lambda ()
+    (list 
+     (interpret "2tests/1.txt") (interpret "2tests/2.txt") (interpret "2tests/3.txt") (interpret "2tests/4.txt") (interpret "2tests/5.txt") (interpret "2tests/6.txt") (interpret "2tests/7.txt") (interpret "2tests/11.txt") (interpret "2tests/12.txt"))))    
+(define ppt
+  (lambda (name)
+    (print (parser name))))
+
+(define parsetree
+  (lambda (name)
+    (parser name)))
+
+; 'outer' interpret
 (define interpret
   (lambda (name)
-    (formatoutput (call/cc
-                   (lambda (return)
-                     (Mstatelist (parser name) (newenv) return (lambda (b) b) (lambda (c) c)))))))
+    (innerinterpret (body (closure 'main (Mstatelistglobal (parser name) (newenv))))
+                (Mstatelistglobal (parser name) (newenv)))))
 
+; called each time function is called to interpret the function body, therefore need to add layer here
+(define innerinterpret
+  (lambda (exp st)
+    (call/cc
+     (lambda (return)
+       (Mstatelist exp st return (lambda (b) b) (lambda (c) c))))))
+
+(define callmain
+  (lambda (exp st)
+    (cond
+      ((null? exp) (error 'no-main-function))
+      ((eq? 'main  (leftoperand (car exp))) (formatoutput (Mst_funcall     
+                                                     (car exp)
+                                                     st)))
+      (else (callmain (cdr exp) st)))))
+    
 (define formatoutput
   (lambda (condition)
     (cond
@@ -22,16 +52,29 @@
 
 ; main Mstate wrapper
 (define Mstatelist 
-  (lambda (exp st return continue break)
+  (lambda (exp st return break continue)
     (cond
       ((null? exp) st) 
       (else (Mstatelist (cdr exp) (Mst (car exp) st return break continue) return break continue)))))
 
+;;; global Mstatelist
+(define Mstatelistglobal
+  (lambda (exp st)
+    (cond
+      ((null? exp) st)
+      (else (Mstatelistglobal (cdr exp) (Mstg (car exp) st))))))
+;;;
+    
+(define functionbody
+  (lambda (syntax)
+    (cadddr (car syntax))))
+    
 (define defaultbreak
   (lambda (b) b))
 
 (define defaultcontinue
   (lambda (c) c))
+
 
 ; ------------------------------------------<
 ; M State functions
@@ -41,16 +84,33 @@
 (define Mst
   (lambda (exp st return break continue)
     (cond
-      ((null? exp)   st)
-      ((eq? 'break    (operator exp)) (Mst_break    st break))
-      ((eq? 'continue (operator exp)) (Mst_continue st continue))
-      ((eq? 'var      (operator exp)) (Mst_declare  exp st))
-      ((eq? '=        (operator exp)) (Mst_assign   exp st))
-      ((eq? 'return   (operator exp)) (Mst_return   exp st return))
-      ((eq? 'if       (operator exp)) (Mst_if       exp st return break continue))
-      ((eq? 'begin    (operator exp)) (Mst_begin    exp st return break continue))
-      ((eq? 'while    (operator exp)) (Mst_while    exp st return break continue))
-      (else (error 'out-of-place-command-identifier-in-code)))))
+      ((null? exp)    st)
+      ((eq? 'break    (operator exp)) (Mst_break       st break))
+      ((eq? 'continue (operator exp)) (Mst_continue    st continue))
+      ((eq? 'var      (operator exp)) (Mst_declare     exp st))
+      ((eq? '=        (operator exp)) (Mst_assign      exp st))
+      ((eq? 'return   (operator exp)) (Mst_return      exp st return))
+      ((eq? 'if       (operator exp)) (Mst_if          exp st return break continue))
+      ((eq? 'begin    (operator exp)) (Mst_begin       exp st return break continue))
+      ((eq? 'while    (operator exp)) (Mst_while       exp st return break continue))
+      ((eq? 'function (operator exp)) (Mst_funclosure  exp st return break continue))
+      ((eq? 'funcall  (operator exp)) (Mst_funcall     exp st))
+      (else (error    'out-of-place-command-identifier-in-code)))))
+
+
+(define Mstg
+  (lambda (exp st)
+    (cond
+      ((null? exp)    st)
+      ((eq? 'var      (operator exp)) (Mst_declare     exp st))
+      ((eq? 'function (operator exp)) (Mst_funclosure  exp st))
+      ((eq? 'funcall  (operator exp)) (Mst_funcall     exp st))
+      ; next lines dont ever get called 
+      ((eq? 'main  (leftoperand exp)) (formatoutput (Mst_funcall     
+                                       exp
+                                       st)))
+      (else (error    'only-global-variables-and-functions-allowed)))))
+
 
 ; '(var x expression) and '(var x)
 ; Declare variable (place in state with corresponding value), if doesn't have value then 'undefined
@@ -58,17 +118,17 @@
   (lambda (exp st)
     (cond
       ; prevent redefining
-      ((in? (leftoperand exp) st) (error 'redefining))
+      ((inl? (leftoperand exp) (car st)) (error 'redefining))
       ; if right operand is null add left operand to state with undefined
       ((null? (rightoperand exp)) (addst (leftoperand exp) 'undefined st))
       ; if right operand is not null, add left value to state with (Mval (rightoperand exp) ... (must be Mval because dont want to save state as true or false, but #t and #f
-      (else (addst (leftoperand exp) (Mval (rightoperand exp) st) st)))))
+      (else (addst (leftoperand exp) (Mvalfunc (rightoperand exp) st) st)))))
 
 ; Assign a value to an existing variable (throw error if doesn't exist)
 (define Mst_assign
   (lambda (exp st)
     (cond
-      ((in? (leftoperand exp) st) (replacest (leftoperand exp) (Mval (rightoperand exp) st) st))
+      ((in? (leftoperand exp) st) (replacest (leftoperand exp) (Mvalfunc (rightoperand exp) st) st))
       (else (error 'declare-your-variables-before-assigning-it-a-value)))))
 
 ; '(return expression)
@@ -77,15 +137,15 @@
   (lambda (exp st return)
     (if (null? exp) 
         state
-        (return (Mval (leftoperand exp) st)))))
+        (return (Mvalfunc (leftoperand exp) st)))))
 
 ; (Mst_if '(if (|| (! z) false) (= z (! z)) (= z z)) '((x y z) (10 20 true))
 ; cadr = condition, caddr = statement1, cadddr = statement2
 (define Mst_if
   (lambda (exp st return break continue)
     (cond
-      ((Mval (cadr exp) st) (Mst (caddr exp) st return break continue))                 ; if cond true
-      ((and (null? (cdddr exp)) (not (Mval (cadr exp) st))) st)   ; 
+      ((Mvalfunc (cadr exp) st) (Mst (caddr exp) st return break continue))                 ; if cond true
+      ((and (null? (cdddr exp)) (not (Mvalfunc (cadr exp) st))) st)   ; 
       (else (Mst (cadddr exp) st return break continue)))))
 
 ; (Mst_while
@@ -109,7 +169,8 @@
     (cond
       ((null? exp) st)
       (else (removelayer (Mstatelist (cdr exp) (addlayer st) return (lambda (v) (break (removelayer v))) (lambda (v) (continue (removelayer v)))))))))
-
+    
+    
 ; (Mst_break
 (define Mst_break
   (lambda (st break)
@@ -120,9 +181,10 @@
   (lambda (st continue)
     (continue st)))
 
+    
 ; Mst_funclosure
 (define Mst_funclosure
-  (lambda (syntax st return break continue)
+  (lambda (syntax st)
     (if (in? (leftoperand syntax) st)
         (error 'cannot-declare-function-more-than-once)
         (addst (leftoperand syntax) (makeclosure syntax st) st))))
@@ -146,7 +208,76 @@
          (cond
            ((eq? n (length env)) env)
            (else ((trim trim) (cdr env)))))))))
-  
+
+
+; Mst_funcall
+(define Mst_funcall
+  (lambda (syntax st)
+    (innerinterpret (body (closure (cadr syntax) st))          ; syntax should include funcall statement
+                 (checkformaltoactualparameters 
+                  (parameters (closure (cadr syntax) st))      ; formal parameters
+                  (cddr syntax)                                ; actual parameters
+                  st                                           ; current state
+                  (trimfunc (closure (cadr syntax) st)))       ; trim function with current state 'remembered'
+                 )))
+                
+; helpers for Mst_funcall
+(define closure
+  (lambda (functionname st)
+    (cond
+      ((not (eq? (valueof functionname st) #f)) (valueof functionname st))
+      (else (error 'define-function-before-calling-it)))))
+
+(define parameters
+  (lambda (closure)
+    (car closure)))
+(define body
+  (lambda (closure)
+    (cadr closure)))
+(define trimfunc
+  (lambda (closure)
+    (caddr closure)))
+    
+; checkformaltoactualparameters returns the new state that pertains directly to function execution
+(define checkformaltoactualparameters
+  (lambda (formalparameters actualparameters state trimfunc)
+    (cond
+      ((not (eq? (length formalparameters) (length actualparameters))) (error 'mismatched-parameters-and-arguments))
+      ((not (allinst? actualparameters state)) (error 'declare-your-function-variables-before-passing-them))
+      (else (cons (functionstate formalparameters (evaluate actualparameters state) (newlayer) state) (trimfunc state))))))
+      
+; checks if all the parameters are in the declared state, true if so, false if not
+(define allinst?
+  (lambda (parameters st)
+    (cond
+      ((null? parameters) #t)
+      ((list? (car parameters)) #t)    ;; pass through for now... not sure if this is right. 
+      ((number? (car parameters)) #t)
+      ((in? (car parameters) st) (allinst? (cdr parameters) st))
+      (else #f))))
+
+; generates a layer for current function with properly bound parameters
+; only called when parameters match and are all in state
+; (functionstate '(a) '(x) (newlayer) (addst 'x 1 (newenv)))
+; (functionstate '(a b) '(x y) (newlayer) '(((x y) (#&1 #&2))))
+(define functionstate
+  (lambda (formals actuals layer state)
+    (cond
+      ((null? formals) layer)
+      (else (functionstate (cdr formals)
+                           (cdr actuals)
+                           (list 
+                            (addtoend (car formals) (operator layer))
+                            (addtoend (box (car actuals)) (leftoperand layer)))
+                           state)))))
+    
+; returns a list of parameters that have been evaluated with mval
+(define evaluate
+  (lambda (actualparameters state)
+    (cond
+      ((null? actualparameters) '())
+      (else (cons (Mvalfunc (car actualparameters) state) (evaluate (cdr actualparameters) state))))))
+
 
 ; ------------------------------------------<
 ; Environment
@@ -260,6 +391,16 @@
 
 
 ; replaces variable's old value with new value in a layer
+(define replacestl2
+  (lambda (variable expv st)
+    (cond 
+      ((null? (operator st)) (newenv))
+      ((eq? variable (car (operator st))) st)
+      (else (list 
+             (cons (car (operator st)) (car (replacestl variable expv (cdrcdr st))))
+             (cons (car (leftoperand st)) (cadr (replacestl variable expv (cdrcdr st)))))))))
+
+; replaces variable's old value with new value in a layer
 (define replacestl
   (lambda (variable expv st)
     (cond 
@@ -269,6 +410,10 @@
              (cons (car (operator st)) (car (replacestl variable expv (cdrcdr st))))
              (cons (car (leftoperand st)) (cadr (replacestl variable expv (cdrcdr st)))))))))
 
+
+(define test
+  (lambda ()
+    (replacest 'z 5 (addst 'z 3 (addst 'y 2 (addst 'x 1 (newenv)))))))
       
 ; returns the value of a variable thats in the state
 (define valueof
@@ -327,14 +472,27 @@
 
 
 ; ------------------------------------------<
+; ------------------------------------------<
 ; M Value
 ;
+
+(define Mvalfunc
+  (lambda (exp state)
+    (cond
+      ;;; error checking
+      ((number? exp) exp)                     ; expression is number
+      
+      
+      ;;; only call operator or Mst_funcall if its a list..
+      ((and (list? exp) (eq? 'funcall (operator exp))) (Mst_funcall exp state))
+      (else (Mval exp state)))))
+      
 
 (define Mval
   (lambda (exp state)
     (cond
+      ;;; error checking
       ((number? exp) exp)                     ; expression is number
-      
       ((and                                   
         (in? exp state)                          ; in state
         (eq? (valueof exp state) 'undefined))    ; undefined
@@ -349,21 +507,17 @@
         (atom? exp)               ; is an atom
         (not (in? exp state)))     
        (error 'make-sure-your-variables-are-declared))
-       
-      ((eq? '+ (operator exp)) (+ (Mval (leftoperand exp) state) (Mval (rightoperand exp) state)))
-      ((eq? '/ (operator exp)) (quotient (Mval (leftoperand exp) state) (Mval (rightoperand exp) state)))
-      ((eq? '% (operator exp)) (remainder (Mval (leftoperand exp) state) (Mval (rightoperand exp) state)))
-      ((eq? '- (operator exp)) (Mval_unary_neg exp state))
+      ;;; ...
+      
+      ((eq? '+ (operator exp)) (+ (Mvalfunc (leftoperand exp) state) (Mvalfunc (rightoperand exp) state)))
+      ((eq? '/ (operator exp)) (quotient (Mvalfunc (leftoperand exp) state) (Mvalfunc (rightoperand exp) state)))
+      ((eq? '% (operator exp)) (remainder (Mvalfunc (leftoperand exp) state) (Mvalfunc (rightoperand exp) state)))
+      ((eq? '- (operator exp)) (cond
+                                 ((null? (rightoperand exp)) (- 0 (Mvalfunc (leftoperand exp) state)))       ; 7 - 7 = 0 -> - 7  = -7
+                                 (else (- (Mvalfunc (leftoperand exp) state) (Mvalfunc (rightoperand exp) state)))))
       ((eq? '* (operator exp)) (* (Mval (leftoperand exp) state) (Mval (rightoperand exp) state)))
       
       (else (Mbool1 exp state)))))
-
-; supports the unary negation operator
-(define Mval_unary_neg
-  (lambda (exp state)
-    (cond
-      ((null? (rightoperand exp)) (- 0 (Mval (leftoperand exp) state)))       ; 7 - 7 = 0 -> - 7  = -7
-      (else (- (Mval (leftoperand exp) state) (Mval (rightoperand exp) state))))))
 
 
 ; ------------------------------------------<
