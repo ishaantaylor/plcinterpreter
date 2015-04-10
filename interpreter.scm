@@ -136,6 +136,7 @@
      (mktrimmer (length st)))))
 
 ; makes a ƒunction that takes the current calling environment returns the environment the function is declared in
+; (mktrimmer (length '(((a) (1))))
 (define mktrimmer
   (lambda (n)
     ((lambda (m)
@@ -218,7 +219,7 @@
       ((in? variable st) (replacest variable expv st))
       (else (cons (list 
              (addtoend variable (operator (car st)))
-             (addtoend expv (leftoperand (car st))))
+             (addtoend (box expv) (leftoperand (car st))))
                   (cdr st))))))
 
 ; i dont actually ever call removest..
@@ -273,9 +274,7 @@
   (lambda (variable expv st)
     (cond 
       ((null? (operator st)) (newenv))
-      ((eq? variable (car (operator st))) (list 
-                                           (cons (car (operator st)) (cdr (operator st)))
-                                           (cons expv (cdr (leftoperand st)))))
+      ((eq? variable (car (operator st))) (begin (defin(set-box! (car (leftoperand st)) expv) st))
       (else (list 
              (cons (car (operator st)) (car (replacestl variable expv (cdrcdr st))))
              (cons (car (leftoperand st)) (cadr (replacestl variable expv (cdrcdr st)))))))))
@@ -299,8 +298,8 @@
   (lambda (variable env)
     (cond
       ((isempty? (operator env)) #f)      ; hopefully will never be called
-      ((and (not (islayer? env)) (eq? variable (car (operator env)))) (car (leftoperand env))) ; safety check. shouldn't ever go through but if it does o wel
-      ((eq? variable (car (operator env))) (car (leftoperand env)))
+      ((and (not (islayer? env)) (eq? variable (car (operator env)))) (unbox (car (leftoperand env)))) ; safety check. shouldn't ever go through but if it does o wel
+      ((eq? variable (car (operator env))) (unbox (car (leftoperand env))))
       ((islayer? env) (valueofl variable (cdrcdr env)))
       (else #f))))
       
