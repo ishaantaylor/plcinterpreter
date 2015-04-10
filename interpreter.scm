@@ -224,9 +224,6 @@
 
 ; i dont actually ever call removest..
 ; removes variable and corresponding value from state
-; (removest 'r '(((a b r c) (1 2 3 4))))
-; (removest 'r '( ((a b)(1 2)) (((c r d)(3 6 4)) (((z) (1))))))
-; (removest 'z '( ((a b)(1 2)) (((c r d)(3 6 4)) (((z) (1))))))
 (define removest
   (lambda (variable st)
     (cond
@@ -239,8 +236,6 @@
       (else (list (car st) (removest variable (car (cdr st))))))))
 
 ; removes variable and corresponding value from layer in state
-; (removest 'r '((y x f j r u i l) (2 5 9 1 2 3 5 21)))
-; (replacest 'x '20 '(((y z) (2 20)) (((x) (20)))))
 (define removestl
   (lambda (variable st)
     (cond
@@ -252,10 +247,6 @@
 
 ; replace variable's current value with exp maintaining state
 ; add variable and (expression evaluated with current state) into (st that has just removed current 'variable's state)
-; (replacest 'x '40 '(((y x z r) (2 5 10 20))))
-; (replacest 'r '9999 '( ((a b)(1 2)) ((c r d)(3 6 4)) ((z) (1))))
-; (replacest 'x '999 '(((y z) (2 20)) ((x) (20)))) ==> error
-; (replacest 'd '999 '(((y z) (2 20)) ((x) (20)))) 
 (define replacest
   (lambda (variable expv st)
     (cond 
@@ -269,20 +260,17 @@
 
 
 ; replaces variable's old value with new value in a layer
-; (replacestl 'x '40 '((y x z r) (2 5 10 20)))
 (define replacestl
   (lambda (variable expv st)
     (cond 
       ((null? (operator st)) (newenv))
-      ((eq? variable (car (operator st))) (begin (defin(set-box! (car (leftoperand st)) expv) st))
+      ((eq? variable (car (operator st))) (begin (set-box! (car (leftoperand st)) expv) st))
       (else (list 
              (cons (car (operator st)) (car (replacestl variable expv (cdrcdr st))))
              (cons (car (leftoperand st)) (cadr (replacestl variable expv (cdrcdr st)))))))))
 
       
 ; returns the value of a variable thats in the state
-; (valueof 'r '(((y x f j r u i l) (2 5 9 1 2 3 5 21))))
-; (valueof 'r '( ((a b)(1 2)) ((c r d)(3 6 4)) ((z) (1)) ) )
 (define valueof
   (lambda (var env)
     (cond 
@@ -293,7 +281,6 @@
       (else (valueofl var (car env))))))            ; last layer
 
 ; returns the value of a variable thats in the first layer
-; (valueofl 'r '((y x f j r u i l) (2 5 9 1 2 3 5 21)))
 (define valueofl
   (lambda (variable env)
     (cond
@@ -304,20 +291,11 @@
       (else #f))))
       
 ; is the variable present in env? has it been declared? (use env when not modifying state) 
-; (in? 'x '(((y x z) (1 2 3))))
-; (in? 'x '((()())))
-; (in? 'x '(((x)(1))))
-; (in? 'x '(((y)(1))))
-; (in? 'x '((()())))
-; (in? 'x '(   ((a b)(1 2)) ((z)(1)) ((y)(2))  ((x)(1))))
-; (in? 'x '((()()) ((()()) ((()())))))
 (define in?
   (lambda (variable env)
     (not (eq? (valueof variable env) #f))))
 
 ; is the variable present in a layer in the environment?
-; (inl? 'x '((a b x)(1 4 2)))
-; (inl? 'x '(()()))
 (define inl?
   (lambda (variable env)
     (not (eq? (valueofl variable env) #f))))
