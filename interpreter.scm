@@ -6,8 +6,11 @@
 (define testvalid
   (lambda ()
     (list
-     (interpret "1.txt") (interpret "2.txt") (interpret "3.txt") (interpret "4.txt") (interpret "5.txt") (interpret "6.txt") (interpret "7.txt") (interpret "8.txt") (interpret "9.txt") (interpret "10.txt")
-     (interpret "11.txt") (interpret "13.txt") (interpret "14.txt") (interpret "15.txt") (interpret "16.txt"))))
+     (interpret "1.txt") (interpret "2.txt") (interpret "3.txt") (interpret "4.txt") (interpret "5.txt"))))
+(define testv2
+  (lambda () 
+    (list
+     (interpret "6.txt") (interpret "7.txt") (interpret "8.txt") (interpret "9.txt") (interpret "10.txt") (interpret "11.txt") (interpret "13.txt") (interpret "14.txt") (interpret "15.txt") (interpret "16.txt"))))
 
 (define testvalid2
   (lambda ()
@@ -31,7 +34,7 @@
   (lambda (exp st vore)
     (call/cc
      (lambda (return)
-       (Mstatelist exp (addlayer st) return (lambda (b) b) (lambda (c) c))))))
+       (removelayer (Mstatelist exp (addlayer st) return (lambda (b) b) (lambda (c) c) vore))))))
 
 (define callmain
   (lambda (exp st)
@@ -51,10 +54,10 @@
 
 ; main Mstate wrapper
 (define Mstatelist 
-  (lambda (exp st return break continue)
+  (lambda (exp st return break continue vore)
     (cond
       ((null? exp) st)
-      (else (Mstatelist (cdr exp) (Mst (car exp) st return break continue) return break continue)))))
+      (else (Mstatelist (cdr exp) (Mst (car exp) st return break continue vore) return break continue vore)))))
 
 ;;; global Mstatelist
 (define Mstatelistglobal
@@ -91,17 +94,17 @@
 
 ; main Mstate ƒunction that directs the rest of the Mstates, called by interpret
 (define Mst
-  (lambda (exp st return break continue)
+  (lambda (exp st return break continue vore)
     (cond
       ((null? exp)    st)
       ((eq? 'break    (operator exp)) (Mst_break       st break))
       ((eq? 'continue (operator exp)) (Mst_continue    st continue))
       ((eq? 'var      (operator exp)) (Mst_declare     exp st))
       ((eq? '=        (operator exp)) (Mst_assign      exp st))
-      ((eq? 'return   (operator exp)) (Mv_return       exp st return))
-      ((eq? 'if       (operator exp)) (Mst_if          exp st return break continue))
-      ((eq? 'begin    (operator exp)) (Mst_begin       exp st return break continue))
-      ((eq? 'while    (operator exp)) (Mst_while       exp st return break continue))
+      ((eq? 'return   (operator exp)) (Mst_return      exp st return vore))
+      ((eq? 'if       (operator exp)) (Mst_if          exp st return break continue vore))
+      ((eq? 'begin    (operator exp)) (Mst_begin       exp st return break continue vore))
+      ((eq? 'while    (operator exp)) (Mst_while       exp st return break continue vore))
       ((eq? 'function (operator exp)) (Mst_funclosure  exp st))
       ((eq? 'funcall  (operator exp)) (Mst_funcall     exp st))
       (else (error    'out-of-place-command-identifier-in-code)))))
@@ -154,48 +157,43 @@
 
 ; '(return expression)
 (define Mst_return
-  (lambda (exp st return)
-    (if (null? exp) 
-        st
-        (return (removelayer (Mst exp st return (lambda (b) b) (lambda (c) c)))))))
-
-(define Mv_return
-  (lambda (exp st return)
-    (if (null? exp)
-        st
-        (return (Mvalfunc (leftoperand exp) st)))))
-        
+  (lambda (exp st return vore)
+    (cond
+      ((null? exp) st)
+      ((eq? vore 'value) (return (Mvalfunc (leftoperand exp) st)))
+      ((eq? vore 'return) (return (removelayer (Mst exp st return (lambda (b) b) (lambda (c) c)))))
+      (else st))))
 
 ; (Mst_if '(if (|| (! z) false) (= z (! z)) (= z z)) '((x y z) (10 20 true))
 ; cadr = condition, caddr = statement1, cadddr = statement2
 (define Mst_if
-  (lambda (exp st return break continue)
+  (lambda (exp st return break continue vore)
     (cond
-      ((Mvalfunc (cadr exp) st) (Mst (caddr exp) st return break continue))                 ; if cond true
+      ((Mvalfunc (cadr exp) st) (Mst (caddr exp) st return break continue vore))                 ; if cond true
       ((and (null? (cdddr exp)) (not (Mvalfunc (cadr exp) st))) st)   ; 
-      (else (Mst (cadddr exp) st return break continue)))))
+      (else (Mst (cadddr exp) st return break continue vore)))))
 
 ; (Mst_while
 (define Mst_while
-  (lambda (exp st return break continue)
-    (while (leftoperand exp) (rightoperand exp) st return)))
+  (lambda (exp st return break continue vore)
+    (while (leftoperand exp) (rightoperand exp) st return vore)))
 
 (define while
-  (lambda (c b st return)
+  (lambda (c b st return vore)
     (call/cc (lambda (break)
                (letrec ((loop (lambda (cond body state)
                                 (if (Mbool1 cond state)
                                     (loop cond body (call/cc (lambda (continue) 
-                                                     (Mst body state return break continue))))
+                                                     (Mst body state return break continue vore))))
                                 state))))
                (loop c b st))))))
 
 ; (Mst_begin
 (define Mst_begin
-  (lambda (exp st return break continue)
+  (lambda (exp st return break continue vore)
     (cond
       ((null? exp) st)
-      (else (removelayer (Mstatelist (cdr exp) (addlayer st) return (lambda (v) (break (removelayer v))) (lambda (v) (continue (removelayer v)))))))))
+      (else (removelayer (Mstatelist (cdr exp) (addlayer st) return (lambda (v) (break (removelayer v))) (lambda (v) (continue (removelayer v))) vore))))))
     
     
 ; (Mst_break
@@ -267,7 +265,7 @@
 (define Mv_funcall_main
   (lambda (syntax st)
     (innerinterpret (body (closure (cadr syntax) st))
-                    (addlayer st)
+                    st
                     'value)))
                     
        
@@ -327,8 +325,8 @@
       (else (functionstate (cdr formals)
                            (cdr actuals)
                            (list 
-                            (addtoend (car formals) (operator layer))
-                            (addtoend (box (car actuals)) (leftoperand layer)))
+                            (cons (car formals) (operator layer))
+                            (cons (box (car actuals)) (leftoperand layer)))
                            state)))))
     
 ; returns a list of parameters that have been evaluated with mval
@@ -409,8 +407,8 @@
     (cond
       ((in? variable st) (replacest variable expv st))
       (else (cons (list 
-             (addtoend variable (operator (car st)))
-             (addtoend (box expv) (leftoperand (car st))))
+             (cons variable (operator (car st)))
+             (cons (box expv) (leftoperand (car st))))
                   (cdr st))))))
 
 ; i dont actually ever call removest..
