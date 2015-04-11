@@ -355,7 +355,9 @@
 ; (removelayer '(((x)(1)) ((y)(2)) ((z)(3)) ))
 (define removelayer
   (lambda (st)
-    (cdr st)))
+    (cond
+      ((null? st) st)
+      (else (cdr st)))))
                    
 ; asks if the state is empty
 ; (isempty? '((()())))
@@ -539,7 +541,11 @@
     (cond
       ;;; error checking
       ((number? exp) exp)                     ; expression is number
-      ((isbool? exp) exp)
+      ((isbool? exp) 
+       (cond
+         ((eq? exp 'true) #t)
+         ((eq? exp 'false) #f)
+         (else exp)))
       
       ;;; only call operator or Mst_funcall if its a list..
       ((and (list? exp) (eq? 'funcall (operator exp))) (Mv_funcall exp state))
@@ -597,8 +603,12 @@
       ((number? exp) (Mval exp st))
       ((in? exp st) (valueof exp st))
       
+      ((and (list? exp) (in? (car exp) st)) (valueof (car exp) st))
+      
       ;;; only call operator or Mst_funcall if its a list..
       ((and (list? exp) (eq? 'funcall (operator exp))) (Mv_funcall exp st))
+      
+      ((not (list? exp)) ('make-sure-boolean-variables-are-declared-properly))
 
       ((eq? '&& (operator exp)) (and (Mbool1 (leftoperand exp) st) (Mbool1 (rightoperand exp) st)))
       ((eq? '|| (operator exp)) (or (Mbool1 (leftoperand exp) st) (Mbool1 (rightoperand exp) st)))
