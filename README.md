@@ -40,7 +40,7 @@ Interpreter for a Java/C like language written in a common Lisp dialect, Scheme.
      	 
   ----------------------------
   ####`functions`
-    This interpreter works for a language like the `loopscope` branche. In addition, it also handles funtion definitions (in addition to normal function definitions, recursive functions and functions inside functions are handled as well). Currently, these functions only return boolean or int values.
+    This interpreter works for a language like the `loopscope` branch. In addition, it also handles funtion definitions (in addition to normal function definitions, recursive functions and functions inside functions are handled as well). Currently, these functions only return boolean or int values.
 
         function fib(a) {
           if (a == 0)
