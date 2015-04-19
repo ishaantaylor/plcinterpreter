@@ -95,18 +95,20 @@
 (define Mst
   (lambda (exp st return break continue vore)
     (cond
-      ((null? exp)    st)
-      ((eq? 'break    (operator exp)) (Mst_break       st break))
-      ((eq? 'continue (operator exp)) (Mst_continue    st continue))
-      ((eq? 'var      (operator exp)) (Mst_declare     exp st))
-      ((eq? '=        (operator exp)) (Mst_assign      exp st))
-      ((eq? 'return   (operator exp)) (Mst_return      exp st return vore))
-      ((eq? 'if       (operator exp)) (Mst_if          exp st return break continue vore))
-      ((eq? 'begin    (operator exp)) (Mst_begin       exp st return break continue vore))
-      ((eq? 'while    (operator exp)) (Mst_while       exp st return break continue vore))
-      ((eq? 'function (operator exp)) (Mst_funclosure  exp st))
-      ((eq? 'funcall  (operator exp)) (Mst_funcall     exp st))
-      (else (error    'out-of-place-command-identifier-in-code)))))
+      ((null? exp)        st)
+      ((eq? 'break        (operator exp)) (Mst_break       st break))
+      ((eq? 'continue     (operator exp)) (Mst_continue    st continue))
+      ((eq? 'var          (operator exp)) (Mst_declare     exp st))
+      ((eq? '=            (operator exp)) (Mst_assign      exp st))
+      ((eq? 'return       (operator exp)) (Mst_return      exp st return vore))
+      ((eq? 'if           (operator exp)) (Mst_if          exp st return break continue vore))
+      ((eq? 'begin        (operator exp)) (Mst_begin       exp st return break continue vore))
+      ((eq? 'while        (operator exp)) (Mst_while       exp st return break continue vore))
+      ((eq? 'function     (operator exp)) (Mst_funclosure  exp st))
+      ((eq? 'funcall      (operator exp)) (Mst_funcall     exp st))
+      ((eq? 'class        (operator exp)) (Mst_class       exp st))
+      (else (error        'out-of-place-command-identifier-in-code)))))
+
 
 ; removes return for statement function
 (define remove-return
@@ -119,22 +121,92 @@
       ((eq? (caar exp) 'return) (rem-ret (cdr exp)))
       (else (cons (car exp) (rem-ret (cdr exp)))))))
 
-; Mst for globals
+; Mst parsing for functions
+; TODO: get old version back from git so test  dont break
 (define Mstg
   (lambda (exp st)
     (cond
       ((null? exp)    st)
       ((eq? 'var      (operator exp)) (Mst_declare     exp st))
-      ((eq? 'function (operator exp)) (Mst_funclosure  exp st))
-      ((eq? 'main  (leftoperand exp)) (formatoutput (Mvalfunc     
-                                       exp
-                                       st)))
-      ((eq? 'funcall  (operator exp)) (Mst_funcall     exp st))
-      ; next lines dont ever get called 
-      
+      ((eq? 'function (operator exp)) (Mst_funclosure  exp st))      
       (else (error    'only-global-variables-and-functions-allowed)))))
 
+;=====================================
+;; CLASSES
+; Mst parsing for class
+(define Mstc
+  (lambda (exp st)
+    (cond
+      ((null? exp)    st)
+      ((eq? 'static-var  (operator exp)) (Mst_declare     exp st))
+      ((eq? 'static-func (operator exp)) (Mst_funclosure  exp st))      
+      (else (error    'only-global-variables-and-functions-allowed)))))
 
+; add class key and class value to st
+(define Mst_class
+  (lambda (exp st)
+    (addst (classname exp) (Mst_class_inner exp exp) st)))
+
+; helper
+(define classname (lambda () cadr))
+             
+; Returns a class 'object' -> returns a layer of state with class in it
+; ((A) (<classobj>)
+(define Mst_class_inner
+  (lambda (exp)
+    (cond
+      ((null? (cdddr exp)) (error 'empty-class-body))
+      (else 
+       (list
+        (cadr exp)
+        (getclass exp))))))
+
+; gets class 'object's value
+(define getclass
+  (lambda (exp current-layer)
+    (list
+     (setparent            (extend exp))
+     (setclassfieldenv     (classbody exp) (newlayer))
+     (setmethodenv         (classbody exp) (newlayer))
+     (setinstancefieldenv  (classbody exp) (newlayer)))))
+
+; helpers for getclass
+(define extend     (lambda () (caddr)))
+(define classbody  (lambda () (cdddr)))
+
+; returns value of the parent class, '() if null
+; takes '(() body)
+(define setparent
+  (lambda (extends-stmt st)
+    (cond
+      ((eq? 'extends     (operator exp)) (leftoperand extends-stmt))
+      (else '()))))
+
+; returns class field layer
+(define setclassfieldenv
+  (lambda (stmt-list st layer)
+    (Mstatelistmod 'static-var       stmt-list (newenv))))
+
+; returns static method layer
+(define setmethodenv
+  (lambda (stmt-list st layer)
+    (Mstatelistmod 'static-function  stmt-list (newenv))))
+ 
+; returns instance field layer
+(define setinstancefieldenv
+  (lambda (stmt-list st layer)
+    (Mstatelistmod 'var              stmt-list (newenv))))
+  
+; selectively calls Mst for the specified `comp` parameter
+; ie. if comp : static-var, will call Mstc on that exp
+(define Mstatelistmod
+  (lambda (comp stmt-list state)
+    (cond
+      ((null? stmt-list) 
+      ((eq? (operator (car stmt-list))) (Mstatelistmod comp (cdr stmt-list) (Mstc (car stmt-list) state)))))))
+;=================================
+;
+  
 ; '(var x expression) and '(var x)
 ; Declare variable (place in state with corresponding value), if doesn't have value then 'undefined
 (define Mst_declare
@@ -529,6 +601,12 @@
   (lambda (x)
     (and (not (pair? x)) (not (null? x)))))
 
+    
+; ------------------------------------------<
+; Class Environment manip
+;
+    
+
 
 ; ------------------------------------------<
 ; ------------------------------------------<
@@ -645,6 +723,8 @@
 (define newenv (lambda () '(( ()() )) ))
 ; returns new layer
 (define newlayer (lambda () '(()())))
+; returns new class 'object'. in key->value model, this is a value
+(define newclassval (lambda () '( () () () () ))) 
 
 (define operator car)
 (define leftoperand cadr)
