@@ -9,8 +9,7 @@
      (interpret "1.txt") (interpret "2.txt") (interpret "3.txt") (interpret "4.txt") (interpret "5.txt"))))
 (define testv2
   (lambda () 
-    (list
-     (interpret "6.txt") (interpret "7.txt") (interpret "8.txt") (interpret "9.txt") (interpret "10.txt") (interpret "11.txt") (interpret "13.txt") (interpret "14.txt") (interpret "15.txt") (interpret "16.txt"))))
+     (interpret "6.txt") (interpret "7.txt") (interpret "8.txt") (interpret "9.txt") (interpret "10.txt") (interpret "11.txt") (interpret "13.txt") (interpret "14.txt") (interpret "15.txt") (interpret "16.txt")))
 
 (define testvalid2
   (lambda ()
@@ -30,7 +29,7 @@
     (Mv_funcall_main (get-main (parser name)) (Mstatelistglobal (parser name) (newenv)))))
 
 ; called each time function is called to interpret the function body
-(define innerinterpret
+(define functioninterpret
   (lambda (exp st vore)
     (call/cc
      (lambda (return)
@@ -238,7 +237,7 @@
 ; Mst_funcall
 (define Mst_funcall
   (lambda (syntax st)
-    (innerinterpret (body (closure (cadr syntax) st))          ; syntax should include funcall statement
+    (functioninterpret (body (closure (cadr syntax) st))          ; syntax should include funcall statement
                     (checkformaltoactualparameters 
                      (parameters (closure (cadr syntax) st))      ; formal parameters
                      (cddr syntax)                               ; actual parameters
@@ -250,7 +249,7 @@
 ; Mv_funcall, only main should call
 (define Mv_funcall
   (lambda (syntax st)
-    (innerinterpret (body (closure (cadr syntax) st))          ; syntax should include funcall statement
+    (functioninterpret (body (closure (cadr syntax) st))          ; syntax should include funcall statement
                     (checkformaltoactualparameters 
                      (parameters (closure (cadr syntax) st))      ; formal parameters
                      (if (hasbody syntax)
@@ -264,7 +263,7 @@
 ; Mv_funcall_main
 (define Mv_funcall_main
   (lambda (syntax st)
-    (innerinterpret (body (closure (cadr syntax) st))
+    (functioninterpret (body (closure (cadr syntax) st))
                     st
                     'value)))
                     
