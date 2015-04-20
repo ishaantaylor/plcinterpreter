@@ -1,16 +1,18 @@
-(load "functionParser.scm")
+(load "classParser.scm")
+;(load "functionParser.scm")
 ;(load "simpleParser.scm")
 
 
-; test
+; test pt 3
 (define testvalid
   (lambda ()
     (list
-     (interpret "1.txt") (interpret "2.txt") (interpret "3.txt") (interpret "4.txt") (interpret "5.txt"))))
+     (interpret "3tests/1.txt") (interpret "3tests/2.txt") (interpret "3tests/3.txt") (interpret "3tests/4.txt") (interpret "3tests/5.txt"))))
 (define testv2
   (lambda () 
-     (interpret "6.txt") (interpret "7.txt") (interpret "8.txt") (interpret "9.txt") (interpret "10.txt") (interpret "11.txt") (interpret "13.txt") (interpret "14.txt") (interpret "15.txt") (interpret "16.txt")))
+     (interpret "3tests/6.txt") (interpret "3tests/7.txt") (interpret "3tests/8.txt") (interpret "3tests/9.txt") (interpret "3tests/10.txt") (interpret "3tests/11.txt") (interpret "3tests/13.txt") (interpret "3tests/14.txt") (interpret "3tests/15.txt") (interpret "3tests/16.txt")))
 
+; test pt 2
 (define testvalid2
   (lambda ()
     (list 
@@ -19,12 +21,17 @@
   (lambda (name)
     (print (parser name))))
 
+; display parstree
 (define parsetree
   (lambda (name)
     (parser name)))
 
-; 'outer' interpret
 (define interpret
+  (lambda (name)
+    (Mstatelistclass (parser name) (newenv))))
+
+; 'outer' interpret
+(define maininterpret
   (lambda (name)
     (Mv_funcall_main (get-main (parser name)) (Mstatelistglobal (parser name) (newenv)))))
 
@@ -65,6 +72,13 @@
       ((null? exp) st)
       (else (Mstatelistglobal (cdr exp) (Mstg (car exp) st))))))
 ;;;
+
+; TODO: change Mstg to Mstc or something , did this in a rush
+(define Mstatelistclass
+  (lambda (exp st)
+    (cond
+      ((null? exp) st)
+      (else (Mstatelistclass (cdr exp) (Mstg (car exp) st))))))
     
 (define functionbody
   (lambda (syntax)
@@ -127,6 +141,7 @@
   (lambda (exp st)
     (cond
       ((null? exp)    st)
+      ((eq? 'class    (operator exp)) (Mst_class       exp st))
       ((eq? 'var      (operator exp)) (Mst_declare     exp st))
       ((eq? 'function (operator exp)) (Mst_funclosure  exp st))      
       (else (error    'only-global-variables-and-functions-allowed)))))
