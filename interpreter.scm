@@ -6,7 +6,8 @@
 (define testvalid
   (lambda ()
     (list
-     (interpret "1.txt") (interpret "2.txt") (interpret "3.txt") (interpret "4.txt") (interpret "5.txt") (interpret "6.txt") (interpret "7.txt") (interpret "8.txt"))))
+     (interpret "1.txt") (interpret "2.txt") (interpret "3.txt") (interpret "4.txt") (interpret "5.txt") (interpret "6.txt") ;(interpret "7.txt")
+     (interpret "8.txt"))))
 
 ; test pt 3
 (define testvalid3
@@ -24,7 +25,7 @@
      (interpret "2tests/1.txt") (interpret "2tests/2.txt") (interpret "2tests/3.txt") (interpret "2tests/4.txt") (interpret "2tests/5.txt") (interpret "2tests/6.txt") (interpret "2tests/7.txt") (interpret "2tests/11.txt") (interpret "2tests/12.txt"))))    
 (define ppt
   (lambda (name)
-    (print (parser name))))
+    (pretty-print (parser name))))
 
 ; display parstree
 (define parse
@@ -33,9 +34,10 @@
 
 (define interpret
   (lambda (name)
-    (Mstatelistclass (parser name) (newenv))))
+    (callmains (parser name) (Mstatelistclass (parser name) (newenv)))))
 
 ; 'outer' interpret
+; TODO: get-main only works now for class body, not entire parse tree.
 (define maininterpret
   (lambda (name)
     (Mv_funcall_main (get-main (parser name)) (Mstatelistglobal (parser name) (newenv)))))
@@ -47,15 +49,15 @@
      (lambda (return)
        (removelayer (Mstatelist exp (addlayer st) return (lambda (b) b) (lambda (c) c) vore))))))
 
-(define callmain
+; returns list of main function executions
+(define callmains
   (lambda (exp st)
     (cond
-      ((null? exp) (error 'no-main-function))
-      ((eq? 'main  (leftoperand (car exp))) (formatoutput (Mvalfunc     
-                                                     (car exp)
-                                                     (newlayer st))))
-      (else (callmain (cdr exp) st)))))
-    
+      ((null? exp) '())
+      ((eq? 'class  (operator (car exp))) (Mv_funcall_main (get-main (classbody (car exp))) st))                            
+      (else (list (callmains (cdr exp) st))))))
+
+; formats output from #t to true ...
 (define formatoutput
   (lambda (condition)
     (cond
@@ -85,19 +87,20 @@
       ((null? exp) st)
       (else (Mstatelistclass (cdr exp) (Mstg (car exp) st))))))
     
-(define functionbody
-  (lambda (syntax)
-    (cadddr (car syntax))))
+(define functionbody (lambda (syntax) (cadddr (car syntax))))
+
+; TODO: change cadr to leftoperator
 ;reconstruct function from closure
 (define get-main
-  (lambda (parsetree)
+  (lambda (classbody)
     (cond
-      ((null? parsetree) (error 'no-main-function))
-      ((eq? (operator (car parsetree)) 'function) (if (eq? (cadr (car parsetree)) 'main)
-                                                      (car parsetree)
-                                                      (get-main (cdr parsetree))))
-      (else (get-main (cdr parsetree))))))
+      ((null? classbody) (error 'no-main-function))
+      ((eq? (operator (car classbody)) 'static-function) (if (eq? (functionname (car classbody)) 'main)
+                                                                         (car classbody)
+                                                                         (get-main (cdr classbody))))
+      (else (get-main (cdr classbody))))))
     
+(define functionname (lambda (exp) (leftoperand exp)))
     
 (define defaultbreak
   (lambda (b) b))
@@ -503,7 +506,7 @@
     (cond
       ((in? variable st) (replacest variable expv st))
       (else (cons (list 
-             (cons variable (operator (car st)))
+             (addtoend variable (operator (car st)))
              (cons (box expv) (leftoperand (car st))))
                   (cdr st))))))
 
@@ -530,6 +533,7 @@
              (cons (car (operator st)) (car (removestl variable (cdrcdr st))))
              (cons (car (leftoperand st)) (cadr (removestl variable (cdrcdr st)))))))))
 
+; TODO: edit this so it works with reverse storage of vars
 ; replace variable's current value with exp maintaining state
 ; add variable and (expression evaluated with current state) into (st that has just removed current 'variable's state)
 (define replacest
@@ -543,7 +547,7 @@
          (else (list (replacestl variable expv (car st))))))
       (else (cons (car st) (replacest variable expv (cdr st)))))))
 
-
+; TODO: see replacest's comment, note this is 2, so maybe remove
 ; replaces variable's old value with new value in a layer
 (define replacestl2
   (lambda (variable expv st)
@@ -556,24 +560,27 @@
 
 ; replaces variable's old value with new value in a layer
 (define replacestl
-  (lambda (variable expv st)
+  (lambda (variable expv layer)
     (cond 
-      ((null? (operator st)) (newenv))
-      ((eq? variable (car (operator st))) (begin (set-box! (car (leftoperand st)) expv) st))
+      ((null? (operator layer)) (newenv))
+      ((eq? variable (car (operator layer))) (begin       (set-box! (indexof (length (cdr (operator layer))) 
+                                                                          (leftoperand layer))
+                                                                 expv)
+                                                       layer))
       (else (list 
-             (cons (car (operator st)) (car (replacestl variable expv (cdrcdr st))))
-             (cons (car (leftoperand st)) (cadr (replacestl variable expv (cdrcdr st)))))))))
+             (cons (car (operator layer))    (operator    (replacestl variable expv (trimvars layer))))
+             (leftoperand (replacestl variable expv (trimvars layer))))))))
 
 
 (define test
   (lambda ()
-    (replacest 'z 5 (addst 'z 3 (addst 'y 2 (addst 'x 1 (newenv)))))))
-      
+    (replacest 'y 10 (replacest 'z 5 (addst 'z 3 (addst 'y 2 (addst 'x 1 (newenv))))))))
+
 ; returns the value of a variable thats in the state
 (define valueof
   (lambda (var env)
     (cond 
-      ((isempty? env) #f)      ; hopefully will never be called
+      ((isempty? env) 'null)      ; hopefully will never be called
       ((null? (cdr env)) (valueofl var (car env)))  ; last layer        
       ((inl? var (car env)) (valueofl var (car env)))
       ((islayered? env) (valueof var (cdr env)))    ; layered and not in first layer, then check other layers
@@ -581,24 +588,50 @@
 
 ; returns the value of a variable thats in the first layer
 (define valueofl
-  (lambda (variable env)
+  (lambda (variable layer)
     (cond
-      ((isempty? (operator env)) #f)      ; hopefully will never be called
-      ((and (not (islayer? env)) (eq? variable (car (operator env)))) (unbox (car (leftoperand env)))) ; safety check. shouldn't ever go through but if it does o wel
-      ((eq? variable (car (operator env))) (unbox (car (leftoperand env))))
-      ((islayer? env) (valueofl variable (cdrcdr env)))
+      ((null? (operator layer)) 'null)
+      ((and (not (islayer? layer)) (eq? variable (car (operator layer)))) (unbox (indexof (length (cdr (operator (layer))) (leftoperand layer))))) ; safety check. shouldn't ever go through but if it does o wel
+      ((eq? variable (car (operator layer))) (unbox (indexof (length cdr) (leftoperand layer))))
+      ((islayer? layer) (valueofl variable (trimvars layer)))
       (else #f))))
       
-; is the variable present in env? has it been declared? (use env when not modifying state) 
-(define in?
-  (lambda (variable env)
-    (not (eq? (valueof variable env) #f))))
 
-; is the variable present in a layer in the environment?
+; is x in the environment? 
+(define in?
+  (lambda (x env)
+    (cond
+      ((null? env) #f)
+      ((null? (operator (car env))) #f)
+      (else (or (inl? x (car env)) (in? x (cdr env)))))))
+
+; is x in the layer?
 (define inl?
-  (lambda (variable env)
-    (not (eq? (valueofl variable env) #f))))
-      
+  (lambda (x layer)
+    (cond
+      ((null? (operator layer)) #f)
+      ((eq? (car (operator layer)) x) #t)
+      (else (inl? x (list (cdr (operator layer)) (leftoperand layer)))))))
+
+
+; get the value of the nth index in l
+(define indexof
+  (lambda (n l)
+    (cond
+      ((null? l) -1)
+      ((eq? n 0) (car l))
+      (else (indexof (- n 1) (cdr l))))))
+
+
+; trim the first variable name off (operator st) leave (leftoperand st) intact
+(define trimvars
+  (lambda (layer)
+    (cond
+      ((null? layer) (newlayer))
+      ((null? (operator layer)) (newlayer))
+      (else (list (cdr (operator layer)) (leftoperand layer))))))
+
+
 ; trim the first element off (operator st) and (leftoperand st)
 ; (cdrcdr '(()()))
 ; (cdrcdr '((1 2 3) (4 5 6)))
