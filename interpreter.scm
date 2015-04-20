@@ -3,8 +3,13 @@
 ;(load "simpleParser.scm")
 
 
-; test pt 3
 (define testvalid
+  (lambda ()
+    (list
+     (interpret "1.txt") (interpret "2.txt") (interpret "3.txt") (interpret "4.txt") (interpret "5.txt") (interpret "6.txt") (interpret "7.txt") (interpret "8.txt"))))
+
+; test pt 3
+(define testvalid3
   (lambda ()
     (list
      (interpret "3tests/1.txt") (interpret "3tests/2.txt") (interpret "3tests/3.txt") (interpret "3tests/4.txt") (interpret "3tests/5.txt"))))
@@ -22,7 +27,7 @@
     (print (parser name))))
 
 ; display parstree
-(define parsetree
+(define parse
   (lambda (name)
     (parser name)))
 
@@ -153,17 +158,17 @@
   (lambda (exp st)
     (cond
       ((null? exp)    st)
-      ((eq? 'static-var  (operator exp)) (Mst_declare     exp st))
-      ((eq? 'static-func (operator exp)) (Mst_funclosure  exp st))      
-      (else (error    'only-global-variables-and-functions-allowed)))))
+      ((eq? 'static-var       (operator exp)) (Mst_declare     exp st))
+      ((eq? 'static-function  (operator exp)) (Mst_funclosure  exp st))
+      (else (error            'only-global-variables-and-functions-allowed)))))
 
 ; add class key and class value to st
 (define Mst_class
   (lambda (exp st)
-    (addst (classname exp) (Mst_class_inner exp exp) st)))
+    (addst (classname exp) (Mst_class_inner exp) st)))
 
 ; helper
-(define classname (lambda () cadr))
+(define classname (lambda (exp) (cadr exp)))
              
 ; Returns a class 'object' -> returns a layer of state with class in it
 ; ((A) (<classobj>)
@@ -178,47 +183,50 @@
 
 ; gets class 'object's value
 (define getclass
-  (lambda (exp current-layer)
+  (lambda (exp)
     (list
-     (setparent            (extend exp))
-     (setclassfieldenv     (classbody exp) (newlayer))
-     (setmethodenv         (classbody exp) (newlayer))
-     (setinstancefieldenv  (classbody exp) (newlayer)))))
+     (car (createparent            (extend exp)))
+     (car (createclassfieldenv     (classbody exp)))
+     (car (createmethodenv         (classbody exp)))
+     (car (createinstancefieldenv  (classbody exp))))))
 
 ; helpers for getclass
-(define extend     (lambda () (caddr)))
-(define classbody  (lambda () (cdddr)))
+(define extend     (lambda (exp) (caddr exp)))
+(define classbody  (lambda (exp) (cadddr exp)))
 
 ; returns value of the parent class, '() if null
 ; takes '(() body)
-(define setparent
-  (lambda (extends-stmt st)
+(define createparent
+  (lambda (extends-stmt)
     (cond
-      ((eq? 'extends     (operator exp)) (leftoperand extends-stmt))
-      (else '()))))
+      ((null? extends-stmt) (list 'null))
+      ((eq? 'extends     (operator extends-stmt)) (list (leftoperand extends-stmt)))
+      (else 'null))))
 
 ; returns class field layer
-(define setclassfieldenv
-  (lambda (stmt-list st layer)
+(define createclassfieldenv
+  (lambda (stmt-list)
     (Mstatelistmod 'static-var       stmt-list (newenv))))
 
 ; returns static method layer
-(define setmethodenv
-  (lambda (stmt-list st layer)
+(define createmethodenv
+  (lambda (stmt-list)
     (Mstatelistmod 'static-function  stmt-list (newenv))))
  
 ; returns instance field layer
-(define setinstancefieldenv
-  (lambda (stmt-list st layer)
-    (Mstatelistmod 'var              stmt-list (newenv))))
+(define createinstancefieldenv
+  (lambda (stmt-list)
+    (newenv)))
+    ;(Mstatelistmod 'var              stmt-list (newenv))))
   
 ; selectively calls Mst for the specified `comp` parameter
 ; ie. if comp : static-var, will call Mstc on that exp
 (define Mstatelistmod
   (lambda (comp stmt-list state)
     (cond
-      ((null? stmt-list) 
-      ((eq? (operator (car stmt-list))) (Mstatelistmod comp (cdr stmt-list) (Mstc (car stmt-list) state)))))))
+      ((null? stmt-list) state)
+      ((eq? comp (operator (car stmt-list))) (Mstatelistmod comp (cdr stmt-list) (Mstc (car stmt-list) state)))
+      (else (Mstatelistmod comp (cdr stmt-list) state)))))
 ;=================================
 ;
   
