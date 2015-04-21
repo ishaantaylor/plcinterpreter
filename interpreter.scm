@@ -129,6 +129,7 @@
       ((eq? 'function     (operator exp)) (Mst_funclosure  exp st))
       ((eq? 'funcall      (operator exp)) (Mst_funcall     exp st))
       ((eq? 'class        (operator exp)) (Mst_class       exp st))
+      ((eq? 'try          (operator exp)) (Mst_try         exp st))
       (else (error        'out-of-place-command-identifier-in-code)))))
 
 
@@ -183,10 +184,10 @@
       (else 
        (list
         (cadr exp)
-        (getclass exp))))))
+        (createclass exp))))))
 
 ; gets class 'object's value
-(define getclass
+(define createclass
   (lambda (exp)
     (list
      (car (createparent            (extend exp)))
@@ -194,7 +195,7 @@
      (car (createmethodenv         (classbody exp)))
      (car (createinstancefieldenv  (classbody exp))))))
 
-; helpers for getclass
+; helpers for createclass
 (define extend     (lambda (exp) (caddr exp)))
 (define classbody  (lambda (exp) (cadddr exp)))
 
@@ -222,6 +223,11 @@
   (lambda (stmt-list)
     (newenv)))
     ;(Mstatelistmod 'var              stmt-list (newenv))))
+
+; get class obj
+(define getclass
+  (lambda (classname env)
+    (valueof classname env)))
   
 ; selectively calls Mst for the specified `comp` parameter
 ; ie. if comp : static-var, will call Mstc on that exp
@@ -318,7 +324,9 @@
     (list
      (rightoperand function)
      (funbody function)
-     (mktrimmer (length st)))))
+     (mktrimmer (length st))
+     ; TODO: (mkruntype)))
+     )))
 
 ; makes a ƒunction that takes the current calling environment returns the environment the function is declared in
 ; (mktrimmer (length '(((a) (1))))
@@ -431,6 +439,35 @@
     (cond
       ((null? actualparameters) '())
       (else (cons (Mvalfunc (car actualparameters) state) (evaluate (cdr actualparameters) state))))))
+
+; TODO: define interpret dot value
+  
+; try catch finally
+(define Mst_try
+  (lambda (exp st return break continue vore)
+    (letrec ((try 
+              (lambda (body state)
+                (call/cc (lambda (finally)
+                           (if (eq? (car exp) 'throw)
+                               (Mstatelist (caddr (caddr exp)) state)
+                               (Mstatelist (cdr exp) (Mst exp st return break continue vore) return break continue vore)))))))
+             (try (cadddr body) st))))
+                                            
+  
+; (Mst_while
+(define Mst_while
+  (lambda (exp st return break continue vore)
+    (while (leftoperand exp) (rightoperand exp) st return vore)))
+
+(define while
+  (lambda (c b st return vore)
+    (call/cc (lambda (break)
+               (letrec ((loop (lambda (cond body state)
+                                (if (Mbool1 cond state)
+                                    (loop cond body (call/cc (lambda (continue) 
+                                                     (Mst body state return break continue vore))))
+                                state))))
+               (loop c b st))))))  
 
 
 ; ------------------------------------------<
