@@ -144,14 +144,15 @@
       (else (cons (car exp) (rem-ret (cdr exp)))))))
 
 ; Mst parsing for functions
-; TODO: get old version back from git so test  dont break
 (define Mstg
   (lambda (exp st)
     (cond
       ((null? exp)    st)
       ((eq? 'class    (operator exp)) (Mst_class       exp st))
+      
+      ; rest shouldnt happen
       ((eq? 'var      (operator exp)) (Mst_declare     exp st))
-      ((eq? 'function (operator exp)) (Mst_funclosure  exp st))      
+      ((eq? 'function (operator exp)) (Mst_funclosure  exp st))
       (else (error    'only-global-variables-and-functions-allowed)))))
 
 ;=====================================
@@ -533,7 +534,7 @@
              (cons (car (operator st)) (car (removestl variable (cdrcdr st))))
              (cons (car (leftoperand st)) (cadr (removestl variable (cdrcdr st)))))))))
 
-; TODO: edit this so it works with reverse storage of vars
+; TODO: replacestc (replace a variable thats in a class defintion, not local)
 ; replace variable's current value with exp maintaining state
 ; add variable and (expression evaluated with current state) into (st that has just removed current 'variable's state)
 (define replacest
@@ -546,17 +547,6 @@
          ((islayered? st) (cons (replacestl variable expv (car st)) (cdr st)))
          (else (list (replacestl variable expv (car st))))))
       (else (cons (car st) (replacest variable expv (cdr st)))))))
-
-; TODO: see replacest's comment, note this is 2, so maybe remove
-; replaces variable's old value with new value in a layer
-(define replacestl2
-  (lambda (variable expv st)
-    (cond 
-      ((null? (operator st)) (newenv))
-      ((eq? variable (car (operator st))) st)
-      (else (list 
-             (cons (car (operator st)) (car (replacestl variable expv (cdrcdr st))))
-             (cons (car (leftoperand st)) (cadr (replacestl variable expv (cdrcdr st)))))))))
 
 ; replaces variable's old value with new value in a layer
 (define replacestl
@@ -574,8 +564,9 @@
 
 (define test
   (lambda ()
-    (replacest 'y 10 (replacest 'z 5 (addst 'z 3 (addst 'y 2 (addst 'x 1 (newenv))))))))
+    (replacest 'y '1000 (addst 'o 'honey (replacest 'y 10 (replacest 'z 5 (addst 'z 3 (addst 'y 2 (addst 'x 1 (newenv))))))))))
 
+; TODO: valueofc (returns value of a variable or function thats in a class definition (searches entire class space))
 ; returns the value of a variable thats in the state
 (define valueof
   (lambda (var env)
@@ -596,7 +587,7 @@
       ((islayer? layer) (valueofl variable (trimvars layer)))
       (else #f))))
       
-
+; TODO: inc (asks if a variable or function name is present in a class definition)
 ; is x in the environment? 
 (define in?
   (lambda (x env)
