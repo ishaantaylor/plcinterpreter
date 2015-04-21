@@ -47,7 +47,7 @@
   (lambda (exp st vore)
     (call/cc
      (lambda (return)
-       (removelayer (Mstatelist exp (addlayer st) return (lambda (b) b) (lambda (c) c) vore))))))
+       (removelayer (Mstatelist exp (addlayer st) return (lambda (b) b) (lambda (c) c) (lambda (t) t) vore))))))
 
 ; returns list of main function executions
 (define callmains
@@ -67,10 +67,10 @@
 
 ; main Mstate wrapper
 (define Mstatelist 
-  (lambda (exp st return break continue vore)
+  (lambda (exp st return break continue throw vore)
     (cond
       ((null? exp) st)
-      (else (Mstatelist (cdr exp) (Mst (car exp) st return break continue vore) return break continue vore)))))
+      (else (Mstatelist (cdr exp) (Mst (car exp) st return break continue throw vore) return break continue throw vore)))))
 
 ;;; global Mstatelist
 (define Mstatelistglobal
@@ -108,6 +108,9 @@
 (define defaultcontinue
   (lambda (c) c))
 
+(define defaultthrow
+  (lambda (t) t))
+
 
 ; ------------------------------------------<
 ; M State functions
@@ -115,7 +118,7 @@
 
 ; main Mstate ƒunction that directs the rest of the Mstates, called by interpret
 (define Mst
-  (lambda (exp st return break continue vore)
+  (lambda (exp st return break continue throw vore)
     (cond
       ((null? exp)        st)
       ((eq? 'break        (operator exp)) (Mst_break       st break))
@@ -123,13 +126,14 @@
       ((eq? 'var          (operator exp)) (Mst_declare     exp st))
       ((eq? '=            (operator exp)) (Mst_assign      exp st))
       ((eq? 'return       (operator exp)) (Mst_return      exp st return vore))
-      ((eq? 'if           (operator exp)) (Mst_if          exp st return break continue vore))
-      ((eq? 'begin        (operator exp)) (Mst_begin       exp st return break continue vore))
-      ((eq? 'while        (operator exp)) (Mst_while       exp st return break continue vore))
+      ((eq? 'if           (operator exp)) (Mst_if          exp st return break continue throw vore))
+      ((eq? 'begin        (operator exp)) (Mst_begin       exp st return break continue throw vore))
+      ((eq? 'while        (operator exp)) (Mst_while       exp st return break continue throw vore))
       ((eq? 'function     (operator exp)) (Mst_funclosure  exp st))
       ((eq? 'funcall      (operator exp)) (Mst_funcall     exp st))
       ((eq? 'class        (operator exp)) (Mst_class       exp st))
-      ((eq? 'try          (operator exp)) (Mst_try         exp st))
+      ((eq? 'try          (operator exp)) (Mst_try         exp st return break continue throw vore))
+      ((eq? 'throw        (operator exp)) (Mst_throw       st throw))
       (else (error        'out-of-place-command-identifier-in-code)))))
 
 
@@ -180,10 +184,10 @@
 (define Mst_class_inner
   (lambda (exp)
     (cond
-      ((null? (cdddr exp)) (error 'empty-class-body))
+      ((null? (funbody exp)) (error 'empty-class-body))
       (else 
        (list
-        (cadr exp)
+        (leftoperand exp)
         (createclass exp))))))
 
 ; gets class 'object's value
@@ -224,10 +228,6 @@
     (newenv)))
     ;(Mstatelistmod 'var              stmt-list (newenv))))
 
-; get class obj
-(define getclass
-  (lambda (classname env)
-    (valueof classname env)))
   
 ; selectively calls Mst for the specified `comp` parameter
 ; ie. if comp : static-var, will call Mstc on that exp
@@ -347,7 +347,7 @@
     (functioninterpret (body (closure (cadr syntax) st))          ; syntax should include funcall statement
                     (checkformaltoactualparameters 
                      (parameters (closure (cadr syntax) st))      ; formal parameters
-                     (cddr syntax)                               ; actual parameters
+                     (cddr syntax)                                ; actual parameters
                      st                                           ; current state with new layer
                      (trimfunc (closure (cadr syntax) st)))       ; trim function with current state 'remembered'
                     'expression
@@ -542,8 +542,8 @@
     (cond
       ((in? variable st) (replacest variable expv st))
       (else (cons (list 
-             (addtoend variable (operator (car st)))
-             (cons (box expv) (leftoperand (car st))))
+             (addtoend variable (names (car st)))
+             (cons (box expv) (vals (car st))))
                   (cdr st))))))
 
 ; i dont actually ever call removest..
@@ -563,11 +563,11 @@
 (define removestl
   (lambda (variable st)
     (cond
-      ((null? (operator st)) (newlayer))
-      ((eq? variable (car (operator st))) (removestl variable (cdrcdr st)))
+      ((null? (names st)) (newlayer))
+      ((eq? variable (car (names st))) (removestl variable (cdrcdr st)))
       (else (list 
-             (cons (car (operator st)) (car (removestl variable (cdrcdr st))))
-             (cons (car (leftoperand st)) (cadr (removestl variable (cdrcdr st)))))))))
+             (cons (car (names st)) (car (removestl variable (cdrcdr st))))
+             (cons (car (vals st)) (cadr (removestl variable (cdrcdr st)))))))))
 
 
 ; replace variable's current value with exp maintaining state
@@ -587,37 +587,37 @@
 (define replacestl
   (lambda (variable expv layer)
     (cond 
-      ((null? (operator layer)) (newenv))
-      ((eq? variable (car (operator layer))) (if (classname? variable)
-                                                 (replacestc x expv (indexof (length (cdr (operator layer)))))
-                                                 (begin (set-box! (indexof (length (cdr (operator layer))) 
-                                                                          (leftoperand layer))
+      ((null? (names layer)) (newenv))
+      ((eq? variable (car (names layer))) (if (classname? variable)
+                                                 (replacestc x expv (indexof (length (cdr (names layer)))))
+                                                 (begin (set-box! (indexof (length (cdr (names layer))) 
+                                                                          (vals layer))
                                                                  expv)
                                                        layer)))
       (else (list 
-             (cons (car (operator layer))    (operator    (replacestl variable expv (trimvars layer))))
-             (leftoperand (replacestl variable expv (trimvars layer))))))))
+             (cons (car (names layer))    (names (replacestl variable expv (trimnames layer))))
+             (vals (replacestl variable expv (trimnames layer))))))))
 
 ; replace a variable thats in a class defintion, not local)
 (define replacestc
   (lambda (x expv c-obj)
     (cond
-      ((inl? (leftoperand c-obj))  (replacestlc x expv (leftoperand c-obj)))
-      ((inl? (rightoperand c-obj)) (replacestlc x expv (rightopernd c-obj)))
+      ((inl? (fields c-obj))  (replacestlc x expv (fields c-obj)))
+      ((inl? (methods c-obj)) (replacestlc x expv (methods c-obj)))
       (else (error 'dont-call-this)))))
 
 ; replaces variable's old value with new value in a layer
 (define replacestlc
   (lambda (variable expv layer)
     (cond 
-      ((null? (operator layer)) (newenv))
-      ((eq? variable (car (operator layer))) (begin (set-box! (indexof (length (cdr (operator layer)))
-                                                                          (leftoperand layer))
+      ((null? (names layer)) (newlayer))
+      ((eq? variable (car (names layer))) (begin (set-box! (indexof (length (cdr (names layer)))
+                                                                          (vals layer))
                                                                  expv)
                                                        layer))
       (else (list 
-             (cons (car (operator layer))    (operator    (replacestlc variable expv (trimvars layer))))
-             (leftoperand (replacestlc variable expv (trimvars layer))))))))
+             (cons (car (names layer)) (names (replacestlc variable expv (trimnames layer))))
+             (vals (replacestlc variable expv (trimnames layer))))))))
   
 
 (define test
@@ -629,7 +629,7 @@
   (lambda (var env)
     (cond 
       ((isempty? env) 'null)      ; hopefully will never be called
-      ((null? (cdr env)) (valueofl var (car env)))  ; last layer        
+      ((null? (cdr env)) (valueofbase var (car env)))  ; last layer        
       ((inl? var (car env)) (valueofl var (car env)))
       ((islayered? env) (valueof var (cdr env)))    ; layered and not in first layer, then check other layers
       (else (valueofl var (car env))))))            ; last layer
@@ -638,68 +638,99 @@
 (define valueofl
   (lambda (variable layer)
     (cond
-      ((null? (operator layer)) 'null)
-      ((and (not (islayer? layer)) (eq? variable (car (operator layer)))) (unbox (indexof (length (cdr (operator (layer))) (leftoperand layer))))) ; safety check. shouldn't ever go through but if it does o wel
-      ((eq? variable (car (operator layer))) (if (classname? variable)
-                                                 (valueofc-inobj (unbox (indexof (length cdr) (leftoperand layer))))
-                                                 (unbox (indexof (length cdr) (leftoperand layer)))))
-      ((islayer? layer) (valueofl variable (trimvars layer)))
+      ((null? (names layer)) 'null)
+      ((and (not (islayer? layer)) (eq? variable (car (names layer)))) (unbox (indexof (length (cdr (names (layer))) (vals layer))))) ; safety check. shouldn't ever go through but if it does o wel
+      ((eq? variable (car (names layer))) (if (classname? variable)
+                                              (valueofc-inobj (unbox (indexof (length (cdr (names layer))) (vals layer))))
+                                              (unbox (indexof (length (cdr (names layer))) (vals layer)))))
+      ((islayer? layer) (valueofl variable (trimnames layer)))
       (else #f))))
 
 ; returns value of a variable or function thats in a class definition (searches entire class space) given a class object
 (define valueofc-inobj
   (lambda (x c-obj)
     (cond
-      ((inl? (leftoperand c-obj))  (valueoflc x (leftoperand c-obj)))
-      ((inl? (rightoperand c-obj)) (valueoflc x (rightoperand c-obj)))
+      ((inl? (fields c-obj))  (valueoflc x (fields c-obj)))
+      ((inl? (methods c-obj)) (valueoflc x (methods c-obj)))
       (else 'null))))
 
 ; returns the value of a variable thats in the first layer without thinking about classes
 (define valueoflc
   (lambda (variable layer)
     (cond
-      ((null? (operator layer)) 'null)
-      ((and (not (islayer? layer)) (eq? variable (car (operator layer)))) (unbox (indexof (length (cdr (operator (layer))) (leftoperand layer))))) ; safety check. shouldn't ever go through but if it does o wel
-      ((eq? variable (car (operator layer))) (unbox (indexof (length cdr) (leftoperand layer))))
-      ((islayer? layer) (valueoflc variable (trimvars layer)))
+      ((null? (names layer)) 'null)
+      ((and (not (islayer? layer)) (eq? variable (car (names layer)))) (unbox (indexof (length (cdr (names (layer))) (vals layer))))) ; safety check. shouldn't ever go through but if it does o wel
+      ((eq? variable (car (names layer))) (unbox (indexof (length (cdr (names layer))) (vals layer))))
+      ((islayer? layer) (valueoflc variable (trimnames layer)))
       (else #f))))
+
+; valueof lookup in c-objs
+(define valueofbase
+  (lambda (variable layer)
+    (cond
+      ((null? (leftoperand layer)) 'null)
+      ((inl? variable (fields  (fields  (unbox (car (vals layer)))))) (valueofl variable (fields  (fields  (unbox (car (vals layer)))))))
+      ((inl? variable (methods (methods (unbox (car (vals layer)))))) (valueofl variable (methods (methods (unbox (car (vals layer)))))))
+      (else (valueofbase variable (trimvalues layer))))))
 
 ; is x in the environment? 
 (define in?
   (lambda (x env)
     (cond
       ((null? env) #f)
-      ((null? (operator (car env))) #f)
-      ((incl? x (car env)) #t)
+      ((null? (cdr env)) (inclasses? x (car env)))
+      ((null? (names (car env))) #f)
       (else (or (inl? x (car env)) (in? x (cdr env)))))))
 
 ; is x in the layer?
 (define inl?
   (lambda (x layer)
     (cond
-      ((null? (operator layer)) #f)
-      ((eq? (car (operator layer)) x) #t)
+      ((null? (names layer)) #f)
+      ((eq? (car (names layer)) x) #t)
       ((classname? x) (inc? (valueofl x layer)))
-      (else (inl? x (list (cdr (operator layer)) (leftoperand layer)))))))
+      (else (inl? x (list (cdr (names layer)) (vals layer)))))))
   
-; is x in the static definitions in a class?
+; is x in the static definitions in a class obj value?
 (define inc?
   (lambda (x c-obj)
-    (or (inl? x (leftoperand c-obj)) (inl? x (rightoperand c-obj)))))
+    (or (inl? x (fields (car c-obj))) (inl? x (methods c-obj)))))
 
-; is the variable name a class name
+(define fields (lambda (c-obj) (leftoperand c-obj)))
+(define methods (lambda (c-obj) (rightoperand c-obj)))
+
+; checks if a name is defined in the c-objs
+(define inclasses?
+  (lambda (x layer)
+    (cond
+      ((null? (vals layer)) #f)
+      ((inl? x (fields (fields  (unbox (car (vals layer)))))) #t)
+      ((inl? x (methods (methods (unbox (car (vals layer)))))) #t)
+      (else (inclasses? x (trimvalues layer))))))
+
+(define names (lambda (layer) (operator layer)))
+(define vals (lambda (layer) (leftoperand layer)))
+
+; retrieve base layer of environment
+(define baselayer
+  (lambda (env)
+    (cond
+      ((null? (cdr env)) (car env))
+      (else (baselayer (cdr env))))))
+
+; is the variable name a class name (capital letter)
 (define classname? (lambda (x) (beginswithcapital? x)))
 (define beginswithcapital?
   (lambda (x)
     (member? (first (string->list (symbol->string x)))
              '(#\A #\B #\C #\D #\E #\F #\G #\H #\I #\J #\K #\L #\M #\N #\O #\P #\Q #\R #\S #\T #\U #\V #\W #\X #\Y #\Z))))
-
 (define member?
   (lambda (x l)
     (cond
       ((null? l) #f)
       ((eq? x (car l)) #t)
       (else (member? x (cdr l))))))
+
 ; get the value of the nth index in l
 (define indexof
   (lambda (n l)
@@ -709,16 +740,23 @@
       (else (indexof (- n 1) (cdr l))))))
 
 
-; trim the first variable name off (operator st) leave (leftoperand st) intact
-(define trimvars
+; trim the car off (names st) leave (vals st) intact
+(define trimnames
   (lambda (layer)
     (cond
       ((null? layer) (newlayer))
-      ((null? (operator layer)) (newlayer))
-      (else (list (cdr (operator layer)) (leftoperand layer))))))
+      ((null? (names layer)) (newlayer))
+      (else (list (cdr (names layer)) (leftoperand layer))))))
 
+; trim the car off (vals st) leave (names st) intact
+(define trimvals
+  (lambda (layer)
+    (cond 
+      ((null? layer) (newlayer))
+      ((null? (leftoperand layer)) (newlayer))
+      (else (list (operator layer) (cdr (leftoperand layer)))))))
 
-; trim the first element off (operator st) and (leftoperand st)
+; trim the first element off (names st) and (vals st)
 ; (cdrcdr '(()()))
 ; (cdrcdr '((1 2 3) (4 5 6)))
 (define cdrcdr
@@ -727,8 +765,8 @@
       ((null? env) (newenv))
       ((isempty? env) env)
       (else (list 
-             (cdr (operator env)) 
-             (cdr (leftoperand env)))))))
+             (cdr (names env)) 
+             (cdr (vals env)))))))
       
 ; add a to end of l
 ; (addtoend 'x '(1 2 3 a b c s))
@@ -783,6 +821,8 @@
       
         
       ((in? exp state) (valueof exp state))   ; expression is variable in state and defined
+      ((and (not (list? exp)) (inclasses? exp (baselayer state))) 
+           (valueofbase exp (baselayer state)))
       
       ((and                       ; expression is not in state ^
         (not (isbool? exp))       ; not a bool value
