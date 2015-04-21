@@ -34,7 +34,7 @@
 
 (define interpret
   (lambda (name)
-    (callmains (parser name) (Mstatelistclass (parser name) (newenv)))))
+    (formatoutput (callmains (parser name) (Mstatelistclass (parser name) (newenv))))))
 
 ; 'outer' interpret
 ; TODO: get-main only works now for class body, not entire parse tree.
