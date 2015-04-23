@@ -359,7 +359,7 @@
     (functioninterpret (body (closure (cadr syntax) st))          ; syntax should include funcall statement
                     (checkformaltoactualparameters 
                      (parameters (closure (cadr syntax) st))      ; formal parameters
-                     (if (hasbody syntax)
+                     (if (hasbody syntax)                         ; TODO: fix this, always evaluates to true, see function has-sublists, no #t case
                          (caddr syntax)      
                          (cddr  syntax))                           ; actual parameters
                      st                                           ; current state with new layer
@@ -386,7 +386,9 @@
 ; helpers for Mst_funcall
 (define closure
   (lambda (functionname st)
-      (valueof functionname st)))
+    (cond
+      ((and (list? functionname) (eq? 'dot (operator functionname))) ) ; TODO: write function that gets closure for (dot A funcname) 
+      (else (valueof functionname st)))))
 
 (define parameters
   (lambda (closure)
@@ -411,7 +413,7 @@
   (lambda (parameters st)
     (cond
       ((null? parameters) #t)
-      ((list? (car parameters)) (allinst? (cdr parameters) st))    ;; pass through for now... not sure if this is right. 
+      ((list? (car parameters)) (Mval (car parameters) st))    ;; pass through for now... not sure if this is right. 
       ((number? (car parameters)) (allinst? (cdr parameters) st))
       ((eq? (car parameters) 'true) (allinst? (cdr parameters) st))
       ((eq? (car parameters) 'false) (allinst? (cdr parameters) st))
@@ -669,7 +671,7 @@
   (lambda (variable layer)
     (cond
       ((null? (leftoperand layer)) '())
-      ((inl? variable (fields (car (unbox (car (vals layer))))))  (valueofl variable (fields (car (unbox (car (vals layer)))))))
+      ((inl? variable (fields (car (unbox (car (vals layer))))))  (valueofl variable (fields  (car (unbox (car (vals layer)))))))
       ((inl? variable (methods (car (unbox (car (vals layer)))))) (valueofl variable (methods (car (unbox (car (vals layer)))))))
       (else (valueofbase variable (trimvalues layer))))))
 
@@ -683,7 +685,7 @@
   (lambda (x env)
     (cond
       ((null? env) #f)
-      ((null? (cdr env)) (inclasses? x (car env)))
+      ;((null? (cdr env)) (inclasses? x (car env)))
       ((null? (names (car env))) #f)
       (else (or (inl? x (car env)) (in? x (cdr env)))))))
 
@@ -711,6 +713,15 @@
       ((null? (vals layer)) #f)
       ((inl? x (fields  (car (unbox (car (vals layer)))))) #t)
       ((inl? x (methods (car (unbox (car (vals layer)))))) #t)
+      (else (inclasses? x (trimvalues layer))))))
+
+; need to make a wrapper function that first checks if there are any classes, or use some other method to search the things NOT in classes first v
+(define inclasses2?
+  (lambda (x layer)
+    (cond
+      ((null? (vals layer)) #f)
+      ((inl? x (unbox (car (vals layer)))) #t)
+      ((inl? x (unbox (car (vals layer)))) #t)
       (else (inclasses? x (trimvalues layer))))))
 
 (define names (lambda (layer) (operator layer)))
@@ -858,7 +869,7 @@
         #f)))
 (define evaldot
   (lambda (exp st)
-    (Mval (valueofc-inobj (rightoperand exp) (valueoflc (classname exp) (car (baselayer st)))) st)))
+    (Mval (valueofc-inobj (rightoperand exp) (car (valueoflc (classname exp) (baselayer st)))) st)))
 (define classname (lambda (exp) (leftoperand exp)))
 
 ; ------------------------------------------<
