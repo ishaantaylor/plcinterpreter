@@ -1,3 +1,4 @@
+; Ishaan Taylor
 (load "classParser.scm")
 ;(load "functionParser.scm")
 ;(load "simpleParser.scm")
@@ -187,7 +188,6 @@
       ((null? (funbody exp)) (error 'empty-class-body))
       (else 
        (list
-        (leftoperand exp)
         (createclass exp))))))
 
 ; gets class 'object's value
@@ -208,9 +208,9 @@
 (define createparent
   (lambda (extends-stmt)
     (cond
-      ((null? extends-stmt) (list 'null))
+      ((null? extends-stmt) (list '()))
       ((eq? 'extends     (operator extends-stmt)) (list (leftoperand extends-stmt)))
-      (else 'null))))
+      (else '()))))
 
 ; returns class field layer
 (define createclassfieldenv
@@ -628,7 +628,7 @@
 (define valueof
   (lambda (var env)
     (cond 
-      ((isempty? env) 'null)      ; hopefully will never be called
+      ((isempty? env) '())      ; hopefully will never be called
       ((null? (cdr env)) (valueofbase var (car env)))  ; last layer        
       ((inl? var (car env)) (valueofl var (car env)))
       ((islayered? env) (valueof var (cdr env)))    ; layered and not in first layer, then check other layers
@@ -638,40 +638,45 @@
 (define valueofl
   (lambda (variable layer)
     (cond
-      ((null? (names layer)) 'null)
+      ((null? (names layer)) '())
       ((and (not (islayer? layer)) (eq? variable (car (names layer)))) (unbox (indexof (length (cdr (names (layer))) (vals layer))))) ; safety check. shouldn't ever go through but if it does o wel
       ((eq? variable (car (names layer))) (if (classname? variable)
                                               (valueofc-inobj (unbox (indexof (length (cdr (names layer))) (vals layer))))
                                               (unbox (indexof (length (cdr (names layer))) (vals layer)))))
       ((islayer? layer) (valueofl variable (trimnames layer)))
-      (else #f))))
+      (else '()))))
 
 ; returns value of a variable or function thats in a class definition (searches entire class space) given a class object
 (define valueofc-inobj
   (lambda (x c-obj)
     (cond
-      ((inl? (fields c-obj))  (valueoflc x (fields c-obj)))
-      ((inl? (methods c-obj)) (valueoflc x (methods c-obj)))
-      (else 'null))))
+      ((inl? x (fields c-obj))  (valueoflc x (fields c-obj)))
+      ((inl? x (methods c-obj)) (valueoflc x (methods c-obj)))
+      (else '()))))
 
-; returns the value of a variable thats in the first layer without thinking about classes
+; returns the value of a variable thats in the first layer without delving into classes
 (define valueoflc
   (lambda (variable layer)
     (cond
-      ((null? (names layer)) 'null)
-      ((and (not (islayer? layer)) (eq? variable (car (names layer)))) (unbox (indexof (length (cdr (names (layer))) (vals layer))))) ; safety check. shouldn't ever go through but if it does o wel
+      ((null? (names layer)) '())
+      ;((and (not (islayer? layer)) (eq? variable (car (names layer)))) (unbox (indexof (length (cdr (names (layer))) (vals layer))))) ; safety check. shouldn't ever go through but if it does o wel
       ((eq? variable (car (names layer))) (unbox (indexof (length (cdr (names layer))) (vals layer))))
       ((islayer? layer) (valueoflc variable (trimnames layer)))
-      (else #f))))
+      (else '()))))
 
 ; valueof lookup in c-objs
 (define valueofbase
   (lambda (variable layer)
     (cond
-      ((null? (leftoperand layer)) 'null)
-      ((inl? variable (fields  (fields  (unbox (car (vals layer)))))) (valueofl variable (fields  (fields  (unbox (car (vals layer)))))))
-      ((inl? variable (methods (methods (unbox (car (vals layer)))))) (valueofl variable (methods (methods (unbox (car (vals layer)))))))
+      ((null? (leftoperand layer)) '())
+      ((inl? variable (fields (car (unbox (car (vals layer))))))  (valueofl variable (fields (car (unbox (car (vals layer)))))))
+      ((inl? variable (methods (car (unbox (car (vals layer)))))) (valueofl variable (methods (car (unbox (car (vals layer)))))))
       (else (valueofbase variable (trimvalues layer))))))
+
+; get a c-obj from the base layer of the state
+(define getclass
+  (lambda (classname st)
+    (valueofbase classname (baselayer st))))
 
 ; is x in the environment? 
 (define in?
@@ -688,7 +693,7 @@
     (cond
       ((null? (names layer)) #f)
       ((eq? (car (names layer)) x) #t)
-      ((classname? x) (inc? (valueofl x layer)))
+      ((classname? x) (inc? x (valueofl x layer)))
       (else (inl? x (list (cdr (names layer)) (vals layer)))))))
   
 ; is x in the static definitions in a class obj value?
@@ -704,8 +709,8 @@
   (lambda (x layer)
     (cond
       ((null? (vals layer)) #f)
-      ((inl? x (fields (fields  (unbox (car (vals layer)))))) #t)
-      ((inl? x (methods (methods (unbox (car (vals layer)))))) #t)
+      ((inl? x (fields  (car (unbox (car (vals layer)))))) #t)
+      ((inl? x (methods (car (unbox (car (vals layer)))))) #t)
       (else (inclasses? x (trimvalues layer))))))
 
 (define names (lambda (layer) (operator layer)))
@@ -781,7 +786,6 @@
   (lambda (x)
     (and (not (pair? x)) (not (null? x)))))
 
-    
 ; ------------------------------------------<
 ; Class Environment manip
 ;
@@ -819,9 +823,10 @@
         (eq? (valueof exp state) 'undefined))    ; undefined
        (error 'make-sure-your-variables-are-defined-with-a-value))
       
+      ((dot? exp) (evaldot exp state))
         
       ((in? exp state) (valueof exp state))   ; expression is variable in state and defined
-      ((and (not (list? exp)) (inclasses? exp (baselayer state))) 
+      ((and (not (list? exp)) (inclasses? exp (baselayer state)))
            (valueofbase exp (baselayer state)))
       
       ((and                       ; expression is not in state ^
@@ -845,6 +850,16 @@
       
       (else (Mbool1 exp state)))))
 
+
+(define dot? 
+  (lambda (exp) 
+    (if (list? exp)
+        (eq? 'dot (operator exp))
+        #f)))
+(define evaldot
+  (lambda (exp st)
+    (Mval (valueofc-inobj (rightoperand exp) (valueoflc (classname exp) (car (baselayer st)))) st)))
+(define classname (lambda (exp) (leftoperand exp)))
 
 ; ------------------------------------------<
 ; M Boolean
