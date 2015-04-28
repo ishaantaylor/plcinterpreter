@@ -4,38 +4,21 @@
 ;(load "simpleParser.scm")
 
 
+;; Tests
 (define testvalid
   (lambda ()
     (list
-     (interpret "1.txt") (interpret "2.txt") (interpret "3.txt") (interpret "4.txt") (interpret "5.txt") (interpret "6.txt") ;(interpret "7.txt")
-     (interpret "8.txt"))))
-
-; test pt 3
-(define testvalid3
-  (lambda ()
-    (list
-     (interpret "3tests/1.txt") (interpret "3tests/2.txt") (interpret "3tests/3.txt") (interpret "3tests/4.txt") (interpret "3tests/5.txt"))))
-(define testv2
-  (lambda () 
-     (interpret "3tests/6.txt") (interpret "3tests/7.txt") (interpret "3tests/8.txt") (interpret "3tests/9.txt") (interpret "3tests/10.txt") (interpret "3tests/11.txt") (interpret "3tests/13.txt") (interpret "3tests/14.txt") (interpret "3tests/15.txt") (interpret "3tests/16.txt")))
-
-; test pt 2
-(define testvalid2
-  (lambda ()
-    (list 
-     (interpret "2tests/1.txt") (interpret "2tests/2.txt") (interpret "2tests/3.txt") (interpret "2tests/4.txt") (interpret "2tests/5.txt") (interpret "2tests/6.txt") (interpret "2tests/7.txt") (interpret "2tests/11.txt") (interpret "2tests/12.txt"))))    
-(define ppt
+     (interpret "1.txt" "A") (interpret "2.txt" "Square") (interpret "3.txt" "B") (interpret "4.txt" "B") (interpret "5.txt" "C"))))
+(define parse
   (lambda (name)
     (pretty-print (parser name))))
 
-; display parstree
-(define parse
-  (lambda (name)
-    (parser name)))
+
+;;;;;;;;;;;;;;;;;;;;;;; BEGIN ;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (define interpret
-  (lambda (name)
-    (formatoutput (callmains (parser name) (Mstatelistclass (parser name) (newenv))))))
+  (lambda (name class)
+    (formatoutput (callmains (parser name) (Mstatelistclass (parser name) (newenv)) (string->symbol class)))))
 
 ; 'outer' interpret
 ; TODO: get-main only works now for class body, not entire parse tree.
@@ -52,11 +35,9 @@
 
 ; returns list of main function executions
 (define callmains
-  (lambda (exp st)
-    (cond
-      ((null? exp) '())
-      ((eq? 'class  (operator (car exp))) (Mv_funcall_main (get-main (classbody (car exp))) st))                            
-      (else (list (callmains (cdr exp) st))))))
+  (lambda (exp st mainclass)
+    (Mv_funcall_main (getmain mainclass st) st)))                 
+      
 
 ; formats output from #t to true ...
 (define formatoutput
@@ -92,14 +73,9 @@
 
 ; TODO: change cadr to leftoperator
 ;reconstruct function from closure
-(define get-main
-  (lambda (classbody)
-    (cond
-      ((null? classbody) (error 'no-main-function))
-      ((eq? (operator (car classbody)) 'static-function) (if (eq? (functionname (car classbody)) 'main)
-                                                                         (car classbody)
-                                                                         (get-main (cdr classbody))))
-      (else (get-main (cdr classbody))))))
+(define getmain
+  (lambda (classname st)
+    (valueofc-inobj 'main (getclass classname st))))
     
 (define functionname (lambda (exp) (leftoperand exp)))
     
@@ -133,21 +109,10 @@
       ((eq? 'function     (operator exp)) (Mst_funclosure  exp st))
       ((eq? 'funcall      (operator exp)) (Mst_funcall     exp st))
       ((eq? 'class        (operator exp)) (Mst_class       exp st))
-      ((eq? 'try          (operator exp)) (Mst_try         exp st return break continue throw vore))
-      ((eq? 'throw        (operator exp)) (Mst_throw       st throw))
+      ((eq? 'try          (operator exp)) (Mst_try         (cdr exp) st return break continue throw vore))
+      ((eq? 'throw        (operator exp)) (Mst_throw       exp st throw))
       (else (error        'out-of-place-command-identifier-in-code)))))
 
-
-; removes return for statement function
-(define remove-return
-  (lambda (exp)
-    (list (caar exp) (cadar exp) (caddar exp) (rem-ret (car (cdddr (car exp)))))))
-(define rem-ret
-  (lambda (exp)
-    (cond
-      ((null? exp) '())
-      ((eq? (caar exp) 'return) (rem-ret (cdr exp)))
-      (else (cons (car exp) (rem-ret (cdr exp)))))))
 
 ; Mst parsing for functions
 (define Mstg
@@ -160,6 +125,7 @@
       ((eq? 'var      (operator exp)) (Mst_declare     exp st))
       ((eq? 'function (operator exp)) (Mst_funclosure  exp st))
       (else (error    'only-global-variables-and-functions-allowed)))))
+
 
 ;=====================================
 ;; CLASSES
@@ -271,7 +237,7 @@
 ; (Mst_if '(if (|| (! z) false) (= z (! z)) (= z z)) '((x y z) (10 20 true))
 ; cadr = condition, caddr = statement1, cadddr = statement2
 (define Mst_if
-  (lambda (exp st return break continue vore)
+  (lambda (exp st return break continue throw vore)
     (cond
       ((Mvalfunc (cadr exp) st) (Mst (caddr exp) st return break continue vore))                 ; if cond true
       ((and (null? (cdddr exp)) (not (Mvalfunc (cadr exp) st))) st)   ; 
@@ -279,22 +245,22 @@
 
 ; (Mst_while
 (define Mst_while
-  (lambda (exp st return break continue vore)
+  (lambda (exp st return break continue throw vore)
     (while (leftoperand exp) (rightoperand exp) st return vore)))
 
 (define while
-  (lambda (c b st return vore)
+  (lambda (c b st return throw vore)
     (call/cc (lambda (break)
                (letrec ((loop (lambda (cond body state)
                                 (if (Mbool1 cond state)
                                     (loop cond body (call/cc (lambda (continue) 
-                                                     (Mst body state return break continue vore))))
+                                                     (Mst body state return break continue throw vore))))
                                 state))))
                (loop c b st))))))
 
 ; (Mst_begin
 (define Mst_begin
-  (lambda (exp st return break continue vore)
+  (lambda (exp st return break continue throw vore)
     (cond
       ((null? exp) st)
       (else (removelayer (Mstatelist (cdr exp) (addlayer st) return (lambda (v) (break (removelayer v))) (lambda (v) (continue (removelayer v))) vore))))))
@@ -387,8 +353,15 @@
 (define closure
   (lambda (functionname st)
     (cond
-      ((and (list? functionname) (eq? 'dot (operator functionname))) ) ; TODO: write function that gets closure for (dot A funcname) 
+      ((and (list? functionname) (eq? 'dot (operator functionname))) (getclosure (leftoperand functionname) (rightoperand functionname) st))  ; TODO: write function that gets closure for (dot A funcname) 
       (else (valueof functionname st)))))
+
+(define getclosure
+  (lambda (classname functionname st)
+    (cond
+      ((inl? classname (baselayer st)) )
+      (else 1))))
+      
 
 (define parameters
   (lambda (closure)
@@ -444,34 +417,52 @@
 
 ; TODO: define interpret dot value
   
+
 ; try catch finally
 (define Mst_try
-  (lambda (exp st return break continue vore)
-    (letrec ((try 
-              (lambda (body state)
-                (call/cc (lambda (finally)
-                           (if (eq? (car exp) 'throw)
-                               (Mstatelist (caddr (caddr exp)) state)
-                               (Mstatelist (cdr exp) (Mst exp st return break continue vore) return break continue vore)))))))
-             (try (cadddr body) st))))
-                                            
-  
-; (Mst_while
-(define Mst_while
-  (lambda (exp st return break continue vore)
-    (while (leftoperand exp) (rightoperand exp) st return vore)))
+  (lambda (exp st return break continue throw vore)
+    ((lambda (try_state)
+       (finally (cdr exp) try_state return break continue throw vore))
+     (try exp st return break continue throw vore))))
+                      
+; Mst_throw
+(define Mst_throw
+  (lambda (exp st throw)
+    (throw (Mval (cadr exp) st))))
 
-(define while
-  (lambda (c b st return vore)
-    (call/cc (lambda (break)
-               (letrec ((loop (lambda (cond body state)
-                                (if (Mbool1 cond state)
-                                    (loop cond body (call/cc (lambda (continue) 
-                                                     (Mst body state return break continue vore))))
-                                state))))
-               (loop c b st))))))  
+; try
+(define try
+  (lambda (exp st return break continue throw vore)
+    (call/cc
+     (lambda (throw-without-catch)
+       (removelayer (Mstatelist (car exp) (addlayer st) return break continue 
+                                (lambda (v)
+                                  (throw-without-catch (catch v (cdr exp) st return break continue throw vore)))
+                                vore))))))
 
+; catch
+(define catch
+  (lambda (e body st return break continue throw vore)
+    ((lambda (new-state)
+       (cond
+         ((null? body) st)
+         ((eq? (operator body) 'catch) (removelayer (Mstatelist (catchbody body) new-state return break continue throw vore)))))
+     (addst 'exception e (addlayer st)))))
 
+(define catchbody (lambda (block) (caddr (car block))))
+
+; finally
+(define finally
+  (lambda (body st return break continue throw vore)
+    (cond
+      ((null? body) st)
+      ((eq? (operator body) 'catch) (finally (cdr body) st return break continue throw vore))
+      (else (removelayer (Mstatelist (finallybody body) (addlayer st) return break continue throw vore))))))
+
+(define finallybody (lambda (block) (cadr (car block))))
+
+                                      
+                                      
 ; ------------------------------------------<
 ; Environment
 ;
@@ -643,7 +634,7 @@
       ((null? (names layer)) '())
       ((and (not (islayer? layer)) (eq? variable (car (names layer)))) (unbox (indexof (length (cdr (names (layer))) (vals layer))))) ; safety check. shouldn't ever go through but if it does o wel
       ((eq? variable (car (names layer))) (if (classname? variable)
-                                              (valueofc-inobj (unbox (indexof (length (cdr (names layer))) (vals layer))))
+                                              (valueofc-inobj variable (unbox (indexof (length (cdr (names layer))) (vals layer))))
                                               (unbox (indexof (length (cdr (names layer))) (vals layer)))))
       ((islayer? layer) (valueofl variable (trimnames layer)))
       (else '()))))
@@ -678,15 +669,16 @@
 ; get a c-obj from the base layer of the state
 (define getclass
   (lambda (classname st)
-    (valueofbase classname (baselayer st))))
+    (valueofl classname (baselayer st))))
 
 ; is x in the environment? 
 (define in?
   (lambda (x env)
     (cond
+      ((list? x) #f)
       ((null? env) #f)
       ;((null? (cdr env)) (inclasses? x (car env)))
-      ((null? (names (car env))) #f)
+      ((null? (names (car env))) (in? x (cdr env)))
       (else (or (inl? x (car env)) (in? x (cdr env)))))))
 
 ; is x in the layer?
@@ -701,7 +693,9 @@
 ; is x in the static definitions in a class obj value?
 (define inc?
   (lambda (x c-obj)
-    (or (inl? x (fields (car c-obj))) (inl? x (methods c-obj)))))
+    (if (not (null? c-obj))
+        (or (inl? x (fields (car c-obj))) (inl? x (methods c-obj)))
+        #f)))
 
 (define fields (lambda (c-obj) (leftoperand c-obj)))
 (define methods (lambda (c-obj) (rightoperand c-obj)))
@@ -765,7 +759,7 @@
       (else (list (cdr (names layer)) (leftoperand layer))))))
 
 ; trim the car off (vals st) leave (names st) intact
-(define trimvals
+(define trimvalues
   (lambda (layer)
     (cond 
       ((null? layer) (newlayer))
@@ -869,7 +863,7 @@
         #f)))
 (define evaldot
   (lambda (exp st)
-    (Mval (valueofc-inobj (rightoperand exp) (car (valueoflc (classname exp) (baselayer st)))) st)))
+    (Mvalfunc (valueofc-inobj (rightoperand exp) (car (valueoflc (classname exp) (baselayer st)))) st)))
 (define classname (lambda (exp) (leftoperand exp)))
 
 ; ------------------------------------------<
