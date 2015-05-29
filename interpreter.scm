@@ -18,7 +18,7 @@
 
 (define interpret
   (lambda (name class)
-    (formatoutput (callmains (parser name) (Mstatelistclass (parser name) (newenv)) (string->symbol class)))))
+    (formatoutput (callmain (parser name) (Mstatelistclass (parser name) (newenv)) (string->symbol class)))))
 
 ; 'outer' interpret
 ; TODO: get-main only works now for class body, not entire parse tree.
@@ -34,7 +34,7 @@
        (removelayer (Mstatelist exp (addlayer st) return (lambda (b) b) (lambda (c) c) (lambda (t) t) vore))))))
 
 ; returns list of main function executions
-(define callmains
+(define callmain
   (lambda (exp st mainclass)
     (Mv_funcall_main (getmain mainclass st) st)))                 
       
@@ -336,7 +336,7 @@
 ; Mv_funcall_main
 (define Mv_funcall_main
   (lambda (syntax st)
-    (functioninterpret (funbody syntax) st 'value)))
+    (functioninterpret (cadr syntax) st 'value)))
                     
        
 (define hasbody
@@ -633,9 +633,7 @@
     (cond
       ((null? (names layer)) '())
       ((and (not (islayer? layer)) (eq? variable (car (names layer)))) (unbox (indexof (length (cdr (names (layer))) (vals layer))))) ; safety check. shouldn't ever go through but if it does o wel
-      ((eq? variable (car (names layer))) (if (classname? variable)
-                                              (valueofc-inobj variable (unbox (indexof (length (cdr (names layer))) (vals layer))))
-                                              (unbox (indexof (length (cdr (names layer))) (vals layer)))))
+      ((eq? variable (car (names layer))) (unbox (indexof (length (cdr (names layer))) (vals layer))))
       ((islayer? layer) (valueofl variable (trimnames layer)))
       (else '()))))
 
@@ -643,6 +641,7 @@
 (define valueofc-inobj
   (lambda (x c-obj)
     (cond
+      ((null? c-obj) '())
       ((inl? x (fields c-obj))  (valueoflc x (fields c-obj)))
       ((inl? x (methods c-obj)) (valueoflc x (methods c-obj)))
       (else '()))))
@@ -669,7 +668,7 @@
 ; get a c-obj from the base layer of the state
 (define getclass
   (lambda (classname st)
-    (valueofl classname (baselayer st))))
+    (car (valueofl classname (baselayer st)))))
 
 ; is x in the environment? 
 (define in?
