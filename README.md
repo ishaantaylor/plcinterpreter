@@ -53,11 +53,30 @@ Interpreter for a Java/C like language written in a common Lisp dialect, Scheme.
         function main() {
           return fib(15);
         }
+        
+  ----------------------------
+  ####`class`
+    This interpreter works for a language like the `functions` branch except for a few differences... Functions must now adhere to the Java declaration of class (static) functions. The interpreter now supports classes, static functions and fields, and try/catch/finally in addition to functions. Finally, to run the interpreter, it looks like `(interpret "<filename>" "<classname>")`.
+
+      class Rectangle {
+        static var width = 10;
+        static var height = 12;
+      
+        static function area() {
+          var a = width * height;
+          return a;
+        }
+      
+        static function setSize(x, y) {
+          width = x;
+          height = y;
+        }
+      }
   
 
 3. Save the above code (or your own code that matches the rules of the above language) to a text file: `"code.txt"`
 
-4. Give the interpreter the initial instruction: `(interpret "code.txt")`
+4. Give the interpreter the initial instruction: ie. `(interpret "code.txt")` (see branches' description above)
 
 ##Goals
 Each iteration will be able to handle a larger and larger subset of the Java and C languages. 
