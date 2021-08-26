@@ -1,11 +1,11 @@
 # plcinterpreter
 Interpreter for a Java/C like language written in a common Lisp dialect, Scheme.
 
-##How to use:
+## How to use:
 1. Clone repository and 'run' `interpreter.scm` (see step 2 for different versions).
 
 2. Each branch has a different interpreter:
-  ####`dev`
+  #### `dev`
     This interpreter works for a language that has variables, assignment statements, mathematical expressions, comparison operators, simple if statements, and return statements like the one below.
 
         var x;
@@ -20,7 +20,7 @@ Interpreter for a Java/C like language written in a common Lisp dialect, Scheme.
         else 
           return y - 1;
   ---------------------------
-  ####`loopscope`
+  #### `loopscope`
     This interpreter works for a language like the `dev` branch. In addition, it also handles while loops, break statements, continue statements, and scope (`{}`).
 
      	 var a = 14;
@@ -39,7 +39,7 @@ Interpreter for a Java/C like language written in a common Lisp dialect, Scheme.
      	 return b;
      	 
   ----------------------------
-  ####`functions`
+  #### `functions`
     This interpreter works for a language like the `loopscope` branch. In addition, it also handles funtion definitions (in addition to normal function definitions, recursive functions and functions inside functions are handled as well). Currently, these functions only return boolean or int values.
 
         function fib(a) {
@@ -55,7 +55,7 @@ Interpreter for a Java/C like language written in a common Lisp dialect, Scheme.
         }
         
   ----------------------------
-  ####`class`
+  #### `class`
     This interpreter works for a language like the `functions` branch except for a few differences... Functions must now adhere to the Java declaration of class (static) functions. The interpreter now supports classes, static functions and fields, and try/catch/finally in addition to functions. Finally, to run the interpreter, it looks like `(interpret "<filename>" "<classname>")`.
 
       class Rectangle {
@@ -78,5 +78,5 @@ Interpreter for a Java/C like language written in a common Lisp dialect, Scheme.
 
 4. Give the interpreter the initial instruction: ie. `(interpret "code.txt")` (see branches' description above)
 
-##Goals
+## Goals
 Each iteration will be able to handle a larger and larger subset of the Java and C languages. 
